@@ -17,7 +17,7 @@ This is a basic GraphQL API built with Node.js, Express, and Apollo Server. It p
 
 Make sure you have the following installed:
 
-- [Node.js](https://nodejs.org/) (v14 or higher)
+- [Node.js](https://nodejs.org/) (v18 or higher)
 - [npm](https://www.npmjs.com/) or [yarn](https://yarnpkg.com/)
 
 ### Installation
