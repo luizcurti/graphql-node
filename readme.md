@@ -78,7 +78,7 @@ npm run build
 
 ## 🔧 Continuous Integration
 
-This project uses GitHub Actions for CI/CD with the following workflows:
+This project uses GitHub Actions for CI/CD with a single unified workflow that includes:
 
 - **Code Quality**: ESLint linting and Prettier formatting checks
 - **Testing**: Automated test execution on Node.js 22.x
@@ -86,4 +86,4 @@ This project uses GitHub Actions for CI/CD with the following workflows:
 - **Build**: Compilation check using Sucrase
 - **Dependencies**: Automated updates via Dependabot
 
-The CI pipeline runs on every push to `main` branch, as well as on pull requests to `main`.
+The CI pipeline runs as a single job on every push to `main` branch, as well as on pull requests to `main`.
