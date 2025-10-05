@@ -1,5 +1,5 @@
 mutation CREATE_POST {
-  createPost(data: { title: "O título", body: "O conteúdo", userId: "592" }) {
+  createPost(data: { title: "The title", body: "The content", userId: "592" }) {
     id
     title
     body
@@ -12,7 +12,7 @@ mutation CREATE_POST {
 }
 
 mutation UPDATE_POST {
-  updatePost(postId: "3vgV_ff", data: { title: "UPDATED - O título" }) {
+  updatePost(postId: "3vgV_ff", data: { title: "UPDATED - The title" }) {
     id
     title
     body
@@ -30,7 +30,7 @@ mutation DELETE_POST {
 
 mutation CREATE_USER {
   createUser(
-    data: { firstName: "João", lastName: "Miranda", userName: "joao-miranda1" }
+    data: { firstName: "John", lastName: "Miranda", userName: "john-miranda1" }
   ) {
     id
     firstName
@@ -48,8 +48,8 @@ mutation UPDATE_USER {
   updateUser(
     userId: "VhsZF-7"
     data: {
-      firstName: "NOVOFIRST"
-      lastName: "Novo last"
+      firstName: "NEWFIRST"
+      lastName: "New last"
       userName: "new.user-name"
     }
   ) {

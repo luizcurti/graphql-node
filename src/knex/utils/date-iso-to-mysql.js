@@ -7,7 +7,7 @@ export const createDate = (dateISOString) => {
     date = new Date(dateISOString);
   }
 
-  return date.toLocaleString('pt-BR', {
+  return date.toLocaleString('en-US', {
     dateStyle: 'short',
     timeStyle: 'medium',
   });

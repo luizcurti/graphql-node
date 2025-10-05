@@ -38,8 +38,8 @@ export class LoginApi extends RESTDataSource {
     await this.patch(userId, { token }, { cacheOptions: { ttl: 0 } });
 
     this.context.res.cookie('jwtToken', token, {
-      secure: true, 
-      httpOnly: true, 
+      secure: true,
+      httpOnly: true,
       maxAge: 1000 * 60 * 60 * 24 * 7,
       path: '/',
       sameSite: 'none',

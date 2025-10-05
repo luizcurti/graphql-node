@@ -98,9 +98,9 @@
     },
     {
       "id": "935",
-      "firstName": "João Pedro",
+      "firstName": "John Peter",
       "lastName": "Santos",
-      "userName": "joaopedro_santos5",
+      "userName": "johnpeter_santos5",
       "indexRef": 7,
       "createdAt": "2017-07-28T00:30:32.214Z"
     },
@@ -161,9 +161,9 @@
       "createdAt": "2016-12-08T00:49:39.870Z"
     },
     {
-      "firstName": "Joãozinho",
+      "firstName": "Johnny",
       "lastName": "Miranda",
-      "userName": "joao-miranda",
+      "userName": "johnny-miranda",
       "passwordHash": "$2b$12$g7MOqHcxPAZwmq3CRsuyQORiNqMaT.dYNhZApg2Hg0mO9T1d2Hzly",
       "indexRef": 21,
       "createdAt": "2021-05-16T21:51:22.435Z",

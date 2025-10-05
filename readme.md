@@ -34,13 +34,56 @@ cd graphql-node
 npm install
 ```
 
-Running the Project
+## 🚀 Running the Project
+
 To start the development server:
 ```bash
 npm run dev
+```
+
+To start the JSON server (database):
+```bash
+npm run server
 ```
 
 The GraphQL playground will be available at:
 ```bash
 http://localhost:4000/graphql
 ```
+
+## 🧪 Testing & Quality Assurance
+
+```bash
+# Run all tests
+npm test
+
+# Run ESLint
+npm run lint
+
+# Fix ESLint issues automatically
+npm run lint:fix
+
+# Run ESLint for CI (allows warnings)
+npm run lint:ci
+
+# Check code formatting
+npm run format:check
+
+# Format code automatically
+npm run format
+
+# Build the project
+npm run build
+```
+
+## 🔧 Continuous Integration
+
+This project uses GitHub Actions for CI/CD with the following workflows:
+
+- **Code Quality**: ESLint linting and Prettier formatting checks
+- **Testing**: Automated test execution on Node.js 22.x
+- **Security**: npm audit for vulnerability scanning
+- **Build**: Compilation check using Sucrase
+- **Dependencies**: Automated updates via Dependabot
+
+The CI pipeline runs on every push to `main` branch, as well as on pull requests to `main`.

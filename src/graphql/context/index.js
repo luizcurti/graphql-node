@@ -12,7 +12,7 @@ const verifyJwtToken = async (token) => {
     if (foundUser.token !== token) return '';
     return userId;
   } catch (e) {
-      console.log(e);
+    console.log(e);
     return '';
   }
 };
@@ -24,7 +24,7 @@ const authorizeUserWithBearerToken = async (req) => {
   const { authorization } = headers;
 
   try {
-    const [_bearer, token] = authorization.split(' ');
+    const [, token] = authorization.split(' ');
     return await verifyJwtToken(token);
   } catch (e) {
     return '';
@@ -32,7 +32,7 @@ const authorizeUserWithBearerToken = async (req) => {
 };
 
 const cookieParser = (cookiesHeader) => {
-  if (typeof cookiesHeader != 'string') return {};
+  if (typeof cookiesHeader !== 'string') return {};
 
   const cookies = cookiesHeader.split(/;\s*/);
 
