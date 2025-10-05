@@ -87,3 +87,17 @@ This project uses GitHub Actions for CI/CD with a single unified workflow that i
 - **Dependencies**: Automated updates via Dependabot
 
 The CI pipeline runs as a single job on every push to `main` branch, as well as on pull requests to `main`.
+
+## 🔒 Security
+
+This project uses Apollo Server v2 and other legacy dependencies that have known security vulnerabilities. See [SECURITY.md](SECURITY.md) for detailed information about known issues and mitigation strategies.
+
+```bash
+# Check for security vulnerabilities
+npm run security
+
+# Run strict security audit
+npm run audit:high
+```
+
+**Note:** The CI pipeline allows known vulnerabilities in legacy dependencies to avoid blocking development while maintaining visibility.

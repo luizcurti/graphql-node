@@ -15,7 +15,10 @@
     "lint:check": "eslint src/ --max-warnings=0",
     "lint:ci": "eslint src/ --max-warnings=10",
     "format": "prettier --write src/",
-    "format:check": "prettier --check src/"
+    "format:check": "prettier --check src/",
+    "audit:high": "npm audit --audit-level=high",
+    "audit:ci": "npm audit --audit-level=high || echo 'Security vulnerabilities found in legacy dependencies'",
+    "security": "npm run audit:ci"
   },
   "keywords": [],
   "author": "",
