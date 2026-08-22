@@ -1,8 +1,0 @@
-{
-    "chat.tools.terminal.autoApprove": {
-        "/^echo \"Aguardando MySQL ficar saudável\\.\\.\\.\" && for i in \\$\\(seq 1 30\\); do if docker exec graphql_mysql mysqladmin ping -h localhost -u root -prootpassword --silent 2>/dev/null; then echo \"MySQL pronto!\"; break; fi; echo \"Tentativa \\$i/30\\.\\.\\.\"; sleep 3; done$/": {
-            "approve": true,
-            "matchCommandLine": true
-        }
-    }
-}
