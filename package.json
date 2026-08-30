@@ -8,10 +8,11 @@
     "test:watch": "jest --watch",
     "test:integration": "NODE_ENV=development jest --config jest.integration.config.js --runInBand",
     "test:e2e": "node -r dotenv/config -r sucrase/register e2e-test.ts",
+    "test:api": "npx --yes newman@6.2.2 run graphql-node.postman_collection.json --env-var baseUrl=${API_BASE_URL:-http://localhost:4003/graphql}",
     "test:ci": "npm run lint:check && npm run typecheck && npm run test && npm run build",
     "typecheck": "tsc --noEmit",
     "dev": "nodemon -e 'ts' -r dotenv/config -r sucrase/register src/index.ts",
-    "build": "rimraf ./dist && sucrase ./src -d ./dist --transforms imports,typescript",
+    "build": "rimraf ./dist && sucrase ./src -d ./dist --transforms imports,typescript --exclude-dirs __tests__",
     "start": "node -r dotenv/config dist/index.js",
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
@@ -32,6 +33,11 @@
   "license": "ISC",
   "engines": {
     "node": ">=22.0.0"
+  },
+  "overrides": {
+    "@types/graphql-depth-limit": {
+      "graphql": "$graphql"
+    }
   },
   "dependencies": {
     "@apollo/server": "^5.5.1",
@@ -85,6 +91,9 @@
     "transform": {
       "^.+\\.[jt]sx?$": "@sucrase/jest-plugin"
     },
-    "testPathIgnorePatterns": ["/node_modules/", "/__tests__/integration/"]
+    "testPathIgnorePatterns": [
+      "/node_modules/",
+      "/__tests__/integration/"
+    ]
   }
 }

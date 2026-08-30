@@ -9,6 +9,7 @@ Diagrams and deeper explanations of how the pieces of this API fit together.
 | [`auth-flow.md`](./auth-flow.md) | Sequence diagrams for login and for how every request is authenticated — why a valid JWT signature alone isn't enough, and how logout actually revokes a session. |
 | [`subscriptions-flow.md`](./subscriptions-flow.md) | How `createdComment` notifies only the post's owner, in real time, over `graphql-ws` + Redis/in-memory PubSub. |
 | [`datasources-class-diagram.md`](./datasources-class-diagram.md) | The `SQLDatasource` base class and its subclasses, and how DataLoader batching avoids N+1 queries. |
+| [`deployment.md`](./deployment.md) | Container architecture: the app + MySQL Docker Compose stack, the multi-stage `Dockerfile`, and where Redis fits in production. |
 
 For setup instructions, available scripts, environment variables, and the API
 surface itself, see the [main README](../readme.md).

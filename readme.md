@@ -1,6 +1,6 @@
 # GraphQL Node API
 
-A production-ready GraphQL API built with Node.js, Apollo Server, Knex, and MySQL. Features JWT authentication via httpOnly cookies, DataLoader batching, Redis PubSub for subscriptions, structured logging, and query depth/complexity protection.
+Live GraphQL subscriptions over Redis PubSub, DataLoader batching to kill N+1 queries, and query depth/complexity limits to reject abusive queries before they run — a GraphQL API built with Apollo Server, Knex, and MySQL, with JWT auth via httpOnly cookies.
 
 📊 **[Architecture diagrams and flow docs →](./docs/README.md)**
 
@@ -201,6 +201,7 @@ npm test                 # Run all tests
 npm run test:watch       # Run tests in watch mode
 npm run test:integration # Run integration tests against a real MySQL (needs db:setup first)
 npm run test:e2e         # Run e2e-test.ts against a running server
+npm run test:api         # Run the Postman collection (via `npx newman`) against a running server
 npm run test:ci          # lint:check + typecheck + test + build
 npm run typecheck        # Type-check the project with tsc (no emit)
 
@@ -219,12 +220,13 @@ npm run security         # Run npm audit (high severity)
 
 ## Testing
 
-Three independent layers, each covering the API from a different angle:
+Four independent layers, each covering the API from a different angle:
 
 ```bash
 npm test                 # unit tests — mocked, no external services needed
 npm run test:integration  # real MySQL — schema, constraints, cascades
 npm run test:e2e          # black-box HTTP run against a live server
+npm run test:api          # Postman collection (via newman) against a live server
 ```
 
 ### Unit tests (`npm test`)
@@ -256,6 +258,21 @@ user's posts and a post's comments.
 28 checks that run real GraphQL requests against a running server — the
 same happy-path and rejected-without-auth scenarios a real client would hit.
 
+### API / collection tests (`npm run test:api`)
+
+Runs [`graphql-node.postman_collection.json`](./graphql-node.postman_collection.json)
+headlessly via [Newman](https://github.com/postmanlabs/newman) (invoked with
+`npx`, not a project dependency — its dependency tree carries known
+vulnerabilities in transitive packages, so it's kept out of `package-lock.json`
+and this project's own `npm audit`). Covers logins, ownership checks,
+validation errors, SQL-injection and depth-limit rejection, and login rate
+limiting — 65 assertions across 32 requests.
+
+Like `test:e2e`, it expects a running server with freshly seeded data
+(`npm run db:setup`); running it twice in a row without reseeding will fail
+on requests that assert uniqueness (e.g. duplicate comment detection), since
+the first run's data is still there.
+
 ## Database
 
 ### Migrations
@@ -273,6 +290,21 @@ Migrations in `src/knex/migrations/`:
 | `20260310130000_create-users-table.ts` | Users table with unique user_name |
 | `20260310130001_create-posts-table.ts` | Posts table with FK → users (CASCADE DELETE) |
 | `20260310130002_add-fk-to-comments.ts` | FK constraints on comments → posts and users (CASCADE DELETE) |
+
+> **Upgrading a database that predates the TypeScript migration:** Knex
+> records each applied migration by filename in `knex_migrations`. If your
+> database already ran these migrations back when the source files were
+> `.js` (before this project's JS→TS migration), `npm run migrate` will fail
+> with `"the migration directory is corrupt"`, since the recorded `.js`
+> names no longer match the `.ts` files on disk. Fix it once with:
+>
+> ```sql
+> UPDATE knex_migrations SET name = REPLACE(name, '.js', '.ts');
+> ```
+>
+> A fresh database (including the one created by `docker compose up` /
+> `npm run db:setup` in this repo) is unaffected — it only happens when
+> reusing pre-existing migration history from before the rewrite.
 
 ### Seeds
 
@@ -292,8 +324,38 @@ Seeds run in order and respect foreign key constraints.
 
 ## Docker
 
-Start a MySQL 8.0 container:
+Run the whole stack — API + MySQL — with Docker Compose. The app image is
+built from the root `Dockerfile` (multi-stage: Sucrase build, then a slim
+production image with only `dist/` and production dependencies).
 
 ```bash
-docker compose up -d
+cp .env.example .env   # fill in the values, same as local development
+docker compose up -d --build
+npm run db:setup       # migrate + seed, run from the host against the containerized DB
 ```
+
+The API is then available at `http://localhost:4003/graphql`, same as
+`npm run dev`. See [`docs/deployment.md`](./docs/deployment.md) for the
+container architecture diagram.
+
+To run only the MySQL container (e.g. while running the API locally via
+`npm run dev`):
+
+```bash
+docker compose up -d graphql_mysql
+```
+
+## CI
+
+[`.github/workflows/ci.yml`](./.github/workflows/ci.yml) runs on every push
+and pull request to `main`, as three jobs:
+
+| Job | Runs |
+|---|---|
+| `quality` | Install → ESLint → Prettier check → typecheck → unit tests → build → `npm audit` → outdated-dependency check |
+| `integration` | Migrate + seed a real MySQL service container → integration tests → build → start the server → e2e tests → API/collection tests |
+| `docker` | Build the app image → `docker compose up` (app + MySQL) → migrate + seed against the containerized DB → e2e tests → API/collection tests, all against the running containers |
+
+Any job failing fails the whole workflow. `quality` must pass before `docker`
+starts, so a broken build or lint error fails fast without spending time on
+the Docker build.

@@ -8,7 +8,7 @@ services:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
     volumes:
-      - ~/.MySQLDBData/mysqlonly/graphql_mysql:/var/lib/mysql
+      - mysql_data:/var/lib/mysql
     ports:
       - "${DATABASE_PORT:-3306}:3306"
     environment:
@@ -25,3 +25,27 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
+
+  app:
+    build: .
+    container_name: graphql_app
+    hostname: graphql_app
+    restart: always
+    depends_on:
+      graphql_mysql:
+        condition: service_healthy
+    ports:
+      - "${PORT:-4003}:4003"
+    environment:
+      DATABASE_HOST: graphql_mysql
+    env_file:
+      - .env
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:4003/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: '{ __typename }' }) }).then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  mysql_data:

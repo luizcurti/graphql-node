@@ -1,0 +1,21 @@
+flowchart TB
+    Dev["Developer / CI runner"]
+
+    subgraph Compose["docker-compose.yml"]
+        subgraph AppContainer["graphql_app<br/>(Dockerfile, node:22-alpine)"]
+            App["Express + Apollo Server<br/>dist/index.js"]
+        end
+
+        subgraph DBContainer["graphql_mysql<br/>(mysql:8.0)"]
+            MySQL[("MySQL 8<br/>volume: mysql_data")]
+        end
+    end
+
+    Redis[("Redis<br/>(production only, external)")]
+
+    Dev -->|"docker compose up -d --build"| Compose
+    Dev -->|"npm run db:setup<br/>(migrate + seed)"| MySQL
+    Dev -->|"HTTP :4003 / ws"| App
+
+    App -->|"knex (mysql2)"| MySQL
+    App -.->|"REQUIRED in production<br/>PubSub for subscriptions"| Redis

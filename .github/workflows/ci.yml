@@ -122,3 +122,71 @@ jobs:
 
     - name: Run e2e tests
       run: npm run test:e2e
+
+    - name: Run API/collection tests (Postman via Newman)
+      run: npm run test:api
+
+  docker:
+    runs-on: ubuntu-latest
+    name: Docker Build & Runtime Validation
+    needs: quality
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Use Node.js 22.x
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22.x'
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Create .env for Docker Compose
+      run: |
+        cat > .env <<EOF
+        PORT=4003
+        NODE_ENV=development
+        ALLOWED_ORIGINS=http://localhost:4003
+        JWT_SECRET=ci-docker-secret-not-used-anywhere-else-32c
+        DATABASE_CLIENT=mysql2
+        DATABASE_HOST=127.0.0.1
+        DATABASE_PORT=3306
+        DATABASE_NAME=graphql_mysql
+        DATABASE_USER=graphql_user
+        DATABASE_PASSWORD=graphql_pass
+        MYSQL_ROOT_PASSWORD=rootpassword
+        LOG_LEVEL=info
+        EOF
+
+    - name: Build image and start containers
+      run: docker compose up -d --build
+
+    - name: Wait for MySQL container to be healthy
+      run: |
+        timeout 90 sh -c \
+          'until [ "$(docker inspect --format="{{.State.Health.Status}}" graphql_mysql)" = "healthy" ]; do sleep 2; done'
+
+    - name: Run migrations and seed against the containerized database
+      run: npm run db:setup
+
+    - name: Wait for app container to be healthy
+      run: |
+        timeout 60 sh -c \
+          'until [ "$(docker inspect --format="{{.State.Health.Status}}" graphql_app)" = "healthy" ]; do sleep 2; done'
+
+    - name: Run e2e tests against the containerized server
+      run: npm run test:e2e
+
+    - name: Run API/collection tests against the containerized server
+      run: npm run test:api
+
+    - name: Show container logs on failure
+      if: failure()
+      run: docker compose logs
+
+    - name: Tear down containers
+      if: always()
+      run: docker compose down -v
