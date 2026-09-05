@@ -8,7 +8,7 @@ Live GraphQL subscriptions over Redis PubSub, DataLoader batching to kill N+1 qu
 
 | Layer | Technology |
 |---|---|
-| Runtime | Node.js 22+ |
+| Runtime | Node.js 24+ |
 | Language | TypeScript (strict mode) |
 | GraphQL Server | @apollo/server 5 (Express 5 + graphql-ws) |
 | Query Language | GraphQL 16 |

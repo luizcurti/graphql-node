@@ -32,7 +32,7 @@
   "author": "",
   "license": "ISC",
   "engines": {
-    "node": ">=22.0.0"
+    "node": ">=24.0.0"
   },
   "overrides": {
     "@types/graphql-depth-limit": {
