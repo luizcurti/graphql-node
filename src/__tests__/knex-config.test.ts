@@ -30,6 +30,7 @@ describe('knexfile', () => {
       database: 'mydb',
       user: 'user',
       password: 'pass',
+      timezone: 'Z',
     });
     expect(config.production.client).toBe('mysql2');
     expect(config.development.migrations.tableName).toBe('knex_migrations');
