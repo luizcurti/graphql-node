@@ -170,7 +170,14 @@ jobs:
           'until [ "$(docker inspect --format="{{.State.Health.Status}}" graphql_mysql)" = "healthy" ]; do sleep 2; done'
 
     - name: Run migrations and seed against the containerized database
-      run: npm run db:setup
+      run: |
+        for i in $(seq 1 10); do
+          npm run db:setup && exit 0
+          echo "db:setup failed (attempt $i/10) — MySQL may still be restarting after init, retrying in 5s..."
+          sleep 5
+        done
+        echo "db:setup did not succeed after retries"
+        exit 1
 
     - name: Wait for app container to be healthy
       run: |
