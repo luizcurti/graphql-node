@@ -1,6 +1,6 @@
 # GraphQL Node API
 
-Live GraphQL subscriptions over Redis PubSub, DataLoader batching to kill N+1 queries, and query depth/complexity limits to reject abusive queries before they run — a GraphQL API built with Apollo Server, Knex, and MySQL, with JWT auth via httpOnly cookies.
+Live GraphQL subscriptions over Redis PubSub — with an optional Kafka event backbone in front of it — DataLoader batching to kill N+1 queries, and query depth/complexity limits to reject abusive queries before they run — a GraphQL API built with Apollo Server, Knex, and MySQL, with JWT auth via httpOnly cookies.
 
 📊 **[Architecture diagrams and flow docs →](./docs/README.md)**
 
@@ -15,6 +15,7 @@ Live GraphQL subscriptions over Redis PubSub, DataLoader batching to kill N+1 qu
 | Database ORM | Knex 3 + MySQL2 |
 | Authentication | JWT (jsonwebtoken) + bcrypt |
 | Subscriptions | graphql-ws over Redis PubSub (ioredis) · in-memory fallback in dev |
+| Event backbone | Kafka (kafkajs) — optional producer/consumer group feeding PubSub · direct fallback when unconfigured |
 | Logging | Pino (pino-pretty in dev, JSON in prod) |
 | Transpiler | Sucrase (types are stripped, not checked — see `npm run typecheck`) |
 | Testing | Jest + @sucrase/jest-plugin |
@@ -38,6 +39,11 @@ src/
 │       ├── comment/                # Comment mutations + Subscription
 │       ├── login/                  # Login / Logout + rate limiting
 │       └── api-filters/            # Pagination/sorting input types
+├── kafka/
+│   ├── client.ts                    # Kafka instance factory (null if KAFKA_BROKERS unset)
+│   ├── producer.ts                  # publishCommentCreated() — Kafka or direct PubSub fallback
+│   ├── consumer.ts                  # Consumer group → republishes onto PubSub
+│   └── topics.ts                    # Topic name constants
 └── knex/
     ├── index.ts                    # Knex connection factory
     ├── knexfile.ts                 # DB config per environment
@@ -50,6 +56,7 @@ src/
 - [Node.js](https://nodejs.org/) v22+
 - [Docker](https://www.docker.com/) (for the MySQL container)
 - Redis (required in production for subscriptions)
+- Kafka (optional — event backbone for `comment.created`; see [Docker](#docker) below)
 
 ## Getting Started
 
@@ -110,6 +117,9 @@ http://localhost:4003/graphql
 | `DATABASE_PASSWORD` | Yes | Database password |
 | `MYSQL_ROOT_PASSWORD` | Yes | MySQL root password (Docker only) |
 | `REDIS_URL` | Prod only | Redis connection URL for subscriptions |
+| `KAFKA_BROKERS` | No | Comma-separated Kafka broker list — enables the Kafka event backbone for `comment.created`; falls back to direct PubSub publish when unset |
+| `KAFKA_CLIENT_ID` | No | Kafka client id (default: `graphql-node`) |
+| `KAFKA_CONSUMER_GROUP` | No | Kafka consumer group id (default: `graphql-node-subscriptions`) |
 | `LOG_LEVEL` | No | Pino log level (default: `info`) |
 
 ## API
@@ -231,9 +241,9 @@ npm run test:api          # Postman collection (via newman) against a live serve
 
 ### Unit tests (`npm test`)
 
-162 tests across 15 suites, with **100% statement/branch/function/line
+172 tests across 18 suites, with **100% statement/branch/function/line
 coverage** on every business-logic module (resolvers, datasources, auth
-context, pubsub, validators — see `npm test -- --coverage`). Entry-point
+context, pubsub, kafka, validators — see `npm test -- --coverage`). Entry-point
 bootstrap (`src/index.ts`) and migrations/seeds are intentionally excluded
 from that figure — they're covered by the integration suite instead, which
 exercises them against a real database rather than mocks.
@@ -242,8 +252,9 @@ exercises them against a real database rather than mocks.
 - `user-validators` — `validateUserName`, `validateUserPassword`
 - `user-resolvers` / `post-resolvers` / `comment-resolvers` — all Query, Mutation, field resolvers, and the real subscription filter (via `withFilter` + pubsub)
 - `login-api` — full login/logout flow, rate limiting, cookie behavior
-- `user-datasource` / `post-datasource` / `comment-datasource` — reducers, whitelist validation, create/update/delete, DataLoader batch functions
+- `user-datasource` / `post-datasource` / `comment-datasource` — reducers, whitelist validation, create/update/delete, DataLoader batch functions, publishing to the Kafka producer on comment creation
 - `context` — every branch of JWT/cookie authentication
+- `kafka-client` / `kafka-producer` / `kafka-consumer` — Kafka-configured vs. unconfigured branches, connect-once memoization, and malformed-message handling
 - `pubsub`, `sql-datasource`, `schema-index`, `logger`, `knex-config` — supporting modules (env-dependent branches, base class behavior, module wiring)
 
 ### Integration tests (`npm run test:integration`)
@@ -344,6 +355,21 @@ To run only the MySQL container (e.g. while running the API locally via
 ```bash
 docker compose up -d graphql_mysql
 ```
+
+### Kafka (optional)
+
+The Kafka broker is behind a Compose profile, so it's off by default. Bring
+it up explicitly:
+
+```bash
+docker compose --profile kafka up -d kafka
+```
+
+Then set `KAFKA_BROKERS` in `.env` — `localhost:9092` if the app runs on the
+host (`npm run dev`), or `kafka:19092` if the app also runs in Compose.
+Without `KAFKA_BROKERS`, `createComment` publishes straight onto PubSub, so
+subscriptions work identically either way — see
+[`docs/subscriptions-flow.md`](./docs/subscriptions-flow.md#kafka-as-an-optional-event-backbone).
 
 ## CI
 

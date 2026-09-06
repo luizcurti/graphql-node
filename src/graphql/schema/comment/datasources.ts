@@ -1,7 +1,7 @@
 import type { Knex } from 'knex';
 import { ValidationError } from '../../errors';
 import { SQLDatasource } from '../../datasources/sql/sql-datasource';
-import { CREATED_COMMENT_TRIGGER, pubSub } from '../../pubsub';
+import { publishCommentCreated } from '../../../kafka/producer';
 
 export interface CommentRow {
   id: number;
@@ -75,7 +75,7 @@ export class CommentSQLDataSource extends SQLDatasource<string, Comment[]> {
       ...partialComment,
     };
 
-    pubSub.publish(CREATED_COMMENT_TRIGGER, {
+    await publishCommentCreated({
       createdComment: commentToReturn,
       postOwner,
     });

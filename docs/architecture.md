@@ -24,6 +24,15 @@ MySQL and back — including the real-time path via GraphQL subscriptions.
   `PubSubEngine` when `REDIS_URL` is set (required in production) and falls
   back to the in-memory `PubSub` otherwise — resolvers never know which one
   they're talking to.
+- **Kafka is an optional event backbone in front of PubSub.** `CommentSQLDataSource.create()`
+  never touches PubSub directly — it calls `publishCommentCreated()`
+  (`src/kafka/producer.ts`). When `KAFKA_BROKERS` is set, that publishes onto
+  the `comment.created` topic, and a separate consumer group
+  (`src/kafka/consumer.ts`, started at boot) reads it back and republishes
+  onto PubSub. When `KAFKA_BROKERS` is unset, the producer publishes to
+  PubSub directly — same event, no broker required. Either way, the
+  `createdComment` subscription resolver is unaware Kafka exists. See
+  [`subscriptions-flow.md`](./subscriptions-flow.md).
 - **Defense in depth.** Query depth is capped at 7 (`graphql-depth-limit`),
   introspection is disabled outside development, and every mutation that
   touches a specific user's data re-checks ownership (`checkOwner`) even

@@ -26,3 +26,11 @@ How the app and its database run together under Docker Compose.
   must point at a real Redis instance for subscriptions once `NODE_ENV=production`;
   local/dev usage falls back to the in-memory PubSub (see
   [`subscriptions-flow.md`](./subscriptions-flow.md)).
+- **Kafka is opt-in via a Compose profile.** The `kafka` service (a
+  single-node KRaft broker, `apache/kafka`) is tagged `profiles: ["kafka"]`,
+  so plain `docker compose up` never starts it — bring it up explicitly with
+  `docker compose --profile kafka up -d kafka`. Point the app at it with
+  `KAFKA_BROKERS=kafka:19092` (container-to-container) or `localhost:9092`
+  (host, e.g. `npm run dev`). Leaving `KAFKA_BROKERS` unset is just as valid:
+  comment events fall back to publishing straight onto PubSub (see
+  [`subscriptions-flow.md`](./subscriptions-flow.md#kafka-as-an-optional-event-backbone)).

@@ -4,6 +4,9 @@ sequenceDiagram
     participant OtherWS as WS Client (other logged-in user)
     participant WSServer as graphql-ws (useServer)
     participant PS as PubSub
+    participant KC as Kafka consumer group<br/>(graphql-node-subscriptions)
+    participant KT as Kafka topic<br/>(comment.created)
+    participant KP as Kafka producer
     participant HTTP as Apollo Server (HTTP)
     participant CDB as CommentSQLDataSource
     participant PostDB as PostSQLDataSource
@@ -18,6 +21,8 @@ sequenceDiagram
     WSServer->>PS: asyncIterableIterator(CREATED_COMMENT)
     Note over OtherWS,PS: also waiting, different loggedUserId
 
+    Note over KC,PS: At boot, startCommentConsumer() subscribed<br/>KC to KT and is running eachMessage(...)
+
     Note over HTTP,DB: Meanwhile, over HTTP
     HTTP->>HTTP: mutation createComment(postId, comment)
     HTTP->>HTTP: checkIsLoggedIn(loggedUserId)
@@ -27,7 +32,15 @@ sequenceDiagram
     HTTP->>CDB: create({ postId, comment, userId, postOwner: postOwnerId })
     CDB->>DB: SELECT ... (duplicate check)
     CDB->>DB: INSERT INTO comments ...
-    CDB->>PS: publish(CREATED_COMMENT,<br/>{ createdComment, postOwner: postOwnerId })
+    CDB->>KP: publishCommentCreated(<br/>{ createdComment, postOwner: postOwnerId })
+
+    alt KAFKA_BROKERS set
+        KP->>KT: send({ createdComment, postOwner: postOwnerId })
+        KT->>KC: eachMessage(...)
+        KC->>PS: publish(CREATED_COMMENT,<br/>{ createdComment, postOwner: postOwnerId })
+    else KAFKA_BROKERS unset (dev fallback)
+        KP->>PS: publish(CREATED_COMMENT,<br/>{ createdComment, postOwner: postOwnerId })
+    end
 
     PS-->>WSServer: payload delivered to every open iterator
     WSServer->>WSServer: filterFn(payload, ctx) per subscriber:<br/>payload.postOwner === ctx.loggedUserId ?

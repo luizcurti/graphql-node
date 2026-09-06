@@ -14,6 +14,8 @@ import { logger } from './utils/logger';
 import { context } from './graphql/context';
 import type { Context } from './graphql/context/types';
 import { resolvers, typeDefs } from './graphql/schema';
+import { startCommentConsumer, stopCommentConsumer } from './kafka/consumer';
+import { disconnectProducer } from './kafka/producer';
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET || JWT_SECRET.length < 32) {
@@ -50,6 +52,8 @@ const server = new ApolloServer<Context>({
         return {
           async drainServer() {
             await serverCleanup.dispose();
+            await stopCommentConsumer();
+            await disconnectProducer();
           },
         };
       },
@@ -59,6 +63,7 @@ const server = new ApolloServer<Context>({
 
 const start = async (): Promise<void> => {
   await server.start();
+  await startCommentConsumer();
 
   app.use(
     '/',

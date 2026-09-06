@@ -24,6 +24,12 @@ flowchart TB
     MySQL[("MySQL 8<br/>users · posts · comments")]
     PubSub["PubSub<br/>Redis (prod) / in-memory (dev)"]
 
+    subgraph Kafka["Kafka event backbone (optional) — src/kafka"]
+        Producer["Producer<br/>publishCommentCreated()"]
+        Topic[/"topic: comment.created"/]
+        Consumer["Consumer group<br/>graphql-node-subscriptions"]
+    end
+
     HTTPClient -->|"POST / (HTTP)"| MW --> HTTPServer
     WSClient -->|"ws:// (Upgrade)"| WSServer
 
@@ -34,5 +40,8 @@ flowchart TB
     Resolvers --> UserDS & PostDS & CommentDS & LoginApi
     UserDS & PostDS & CommentDS & LoginApi --> Knex --> MySQL
 
-    Resolvers <-->|"publish / asyncIterableIterator"| PubSub
+    CommentDS -->|"KAFKA_BROKERS set"| Producer --> Topic --> Consumer
+    CommentDS -.->|"KAFKA_BROKERS unset<br/>(dev fallback)"| PubSub
+    Consumer -->|"publish(CREATED_COMMENT)"| PubSub
+    Resolvers <-->|"asyncIterableIterator"| PubSub
     PubSub -.->|"notifies matching<br/>subscribers"| WSServer

@@ -2,13 +2,12 @@ import type { Knex } from 'knex';
 import { ValidationError } from '../graphql/errors';
 import { CommentSQLDataSource } from '../graphql/schema/comment/datasources';
 
-// mock pubSub so tests don't need a real Redis
-jest.mock('../graphql/pubsub', () => ({
-  pubSub: { publish: jest.fn() },
-  CREATED_COMMENT_TRIGGER: 'CREATED_COMMENT',
+// mock the Kafka producer so tests don't need a real Kafka/Redis
+jest.mock('../kafka/producer', () => ({
+  publishCommentCreated: jest.fn(),
 }));
 
-import { pubSub } from '../graphql/pubsub';
+import { publishCommentCreated } from '../kafka/producer';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -123,7 +122,7 @@ describe('CommentSQLDataSource.create', () => {
     expect(result.post_id).toBe('5');
   });
 
-  it('publishes an event on pubSub after creating a comment', async () => {
+  it('publishes a comment-created event after creating a comment', async () => {
     let callCount = 0;
     const db = jest.fn(() => {
       callCount++;
@@ -145,8 +144,7 @@ describe('CommentSQLDataSource.create', () => {
       postOwner: 'owner1',
     });
 
-    expect(pubSub.publish).toHaveBeenCalledWith(
-      'CREATED_COMMENT',
+    expect(publishCommentCreated).toHaveBeenCalledWith(
       expect.objectContaining({
         createdComment: expect.objectContaining({ id: 42 }),
         postOwner: 'owner1',
@@ -171,8 +169,7 @@ describe('CommentSQLDataSource.create', () => {
 
     await ds.create({ userId: '10', postId: '5', comment: 'Hello' });
 
-    expect(pubSub.publish).toHaveBeenCalledWith(
-      'CREATED_COMMENT',
+    expect(publishCommentCreated).toHaveBeenCalledWith(
       expect.objectContaining({ postOwner: null }),
     );
   });
