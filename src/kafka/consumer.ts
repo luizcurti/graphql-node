@@ -33,7 +33,10 @@ export const startCommentConsumer = async (): Promise<void> => {
           status: 'success',
         });
       } catch (error) {
-        logger.error({ error }, 'Failed to process Kafka message');
+        logger.error(
+          { err: (error as Error).message },
+          'Failed to process Kafka message',
+        );
         kafkaMessagesConsumedTotal.inc({
           topic: COMMENT_CREATED_TOPIC,
           status: 'error',

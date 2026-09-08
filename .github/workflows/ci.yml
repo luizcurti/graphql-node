@@ -85,6 +85,7 @@ jobs:
     env:
       NODE_ENV: development
       PORT: 4003
+      DOTENV_CONFIG_QUIET: 'true'
       ALLOWED_ORIGINS: http://localhost:4003
       JWT_SECRET: ci-only-secret-not-used-anywhere-else-32chars
       DATABASE_CLIENT: mysql2

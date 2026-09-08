@@ -188,7 +188,11 @@ input ApiFiltersInput {
 
 ## Authentication
 
-Login sets a `jwtToken` **httpOnly cookie** — no token is returned in the response body.
+Login sets a `jwtToken` **httpOnly cookie** for browser clients. The same
+token is also returned as `token` in the mutation response — needed because
+non-browser flows (WebSocket subscriptions, mobile/API clients) can't rely on
+the cookie — so a client that only wants cookie-based auth should simply not
+select that field:
 
 ```graphql
 mutation {
