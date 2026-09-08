@@ -4,6 +4,7 @@ type EachMessage = (payload: {
 
 describe('kafka consumer', () => {
   const publishMock = jest.fn();
+  const kafkaMessagesConsumedTotal = { inc: jest.fn() };
 
   const makeConsumer = () => {
     let eachMessage: EachMessage;
@@ -24,9 +25,13 @@ describe('kafka consumer', () => {
   beforeEach(() => {
     jest.resetModules();
     publishMock.mockClear();
+    kafkaMessagesConsumedTotal.inc.mockClear();
     jest.doMock('../graphql/pubsub', () => ({
       pubSub: { publish: publishMock },
       CREATED_COMMENT_TRIGGER: 'CREATED_COMMENT',
+    }));
+    jest.doMock('../observability/metrics', () => ({
+      kafkaMessagesConsumedTotal,
     }));
   });
 
@@ -64,6 +69,10 @@ describe('kafka consumer', () => {
     });
 
     expect(publishMock).toHaveBeenCalledWith('CREATED_COMMENT', event);
+    expect(kafkaMessagesConsumedTotal.inc).toHaveBeenCalledWith({
+      topic: 'comment.created',
+      status: 'success',
+    });
 
     await stopCommentConsumer();
     expect(consumer.disconnect).toHaveBeenCalled();
@@ -99,5 +108,9 @@ describe('kafka consumer', () => {
     ).resolves.toBeUndefined();
 
     expect(publishMock).not.toHaveBeenCalled();
+    expect(kafkaMessagesConsumedTotal.inc).toHaveBeenCalledWith({
+      topic: 'comment.created',
+      status: 'error',
+    });
   });
 });

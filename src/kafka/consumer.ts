@@ -1,5 +1,6 @@
 import { pubSub, CREATED_COMMENT_TRIGGER } from '../graphql/pubsub';
 import { logger } from '../utils/logger';
+import { kafkaMessagesConsumedTotal } from '../observability/metrics';
 import { getKafka } from './client';
 import { COMMENT_CREATED_TOPIC } from './topics';
 
@@ -27,8 +28,16 @@ export const startCommentConsumer = async (): Promise<void> => {
       try {
         const event = JSON.parse(message.value.toString());
         await pubSub.publish(CREATED_COMMENT_TRIGGER, event);
+        kafkaMessagesConsumedTotal.inc({
+          topic: COMMENT_CREATED_TOPIC,
+          status: 'success',
+        });
       } catch (error) {
         logger.error({ error }, 'Failed to process Kafka message');
+        kafkaMessagesConsumedTotal.inc({
+          topic: COMMENT_CREATED_TOPIC,
+          status: 'error',
+        });
       }
     },
   });

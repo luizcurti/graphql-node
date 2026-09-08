@@ -1,6 +1,6 @@
 import jwt from 'jsonwebtoken';
 import type { Response } from 'express';
-import { knex } from '../../knex/';
+import { knex, knexRead } from '../../knex/';
 import { UserSQLDataSource } from '../schema/user/sql-datasource';
 import { PostSQLDataSource } from '../schema/post/sql-datasource';
 import { CommentSQLDataSource } from '../schema/comment/datasources';
@@ -15,7 +15,7 @@ interface ReqLike {
 }
 
 const makeUserDb = (): UserSQLDataSource => {
-  const userDb = new UserSQLDataSource(knex);
+  const userDb = new UserSQLDataSource(knex, knexRead);
   userDb.initialize({ context: {}, cache: undefined });
   return userDb;
 };
@@ -85,8 +85,8 @@ export const context = async ({
   }
 
   const userDb = makeUserDb();
-  const postDb = new PostSQLDataSource(knex);
-  const commentDb = new CommentSQLDataSource(knex);
+  const postDb = new PostSQLDataSource(knex, knexRead);
+  const commentDb = new CommentSQLDataSource(knex, knexRead);
 
   const theContext: Context = {
     loggedUserId,

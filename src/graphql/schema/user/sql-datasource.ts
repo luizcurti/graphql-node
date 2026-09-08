@@ -81,10 +81,10 @@ export class UserSQLDataSource extends SQLDatasource<string, User | null> {
   private _byIdLoader: DataLoader<string, User | null>;
   private _byUserNameLoader: DataLoader<string, UserRow | null>;
 
-  constructor(dbConnection: Knex) {
-    super(dbConnection);
+  constructor(dbConnection: Knex, readConnection?: Knex) {
+    super(dbConnection, readConnection);
     this._byIdLoader = new DataLoader(async (ids: readonly string[]) => {
-      const rows: UserRow[] = await this.db(this.tableName).whereIn(
+      const rows: UserRow[] = await this.readDb(this.tableName).whereIn(
         'id',
         ids as string[],
       );
@@ -95,7 +95,7 @@ export class UserSQLDataSource extends SQLDatasource<string, User | null> {
     });
     this._byUserNameLoader = new DataLoader(
       async (userNames: readonly string[]) => {
-        const rows: UserRow[] = await this.db(this.tableName).whereIn(
+        const rows: UserRow[] = await this.readDb(this.tableName).whereIn(
           'user_name',
           userNames as string[],
         );
@@ -106,13 +106,15 @@ export class UserSQLDataSource extends SQLDatasource<string, User | null> {
     );
   }
 
+  // Query.users — a list read with no write dependency in the same request,
+  // so it's safe to serve from the replica.
   async getUsers({
     _sort,
     _order,
     _start,
     _limit,
   }: ApiFiltersInput = {}): Promise<User[]> {
-    let query = this.db(this.tableName);
+    let query = this.readDb(this.tableName);
     if (_sort) {
       const col = resolveSort(_sort);
       if (!ALLOWED_SORT_COLUMNS.has(col)) {
@@ -126,6 +128,9 @@ export class UserSQLDataSource extends SQLDatasource<string, User | null> {
     return rows.map(userReducer);
   }
 
+  // Stays on the write connection (not this.readDb): createUser/updateUser
+  // call this right after an insert/update and need to see it immediately,
+  // which a lagging replica isn't guaranteed to.
   async getUser(id: string | number): Promise<User | null> {
     const row: UserRow | undefined = await this.db(this.tableName)
       .where('id', id)

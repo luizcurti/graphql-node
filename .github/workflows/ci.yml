@@ -7,6 +7,23 @@ on:
     branches: [ main ]
 
 jobs:
+  secrets-scan:
+    runs-on: ubuntu-latest
+    name: Secret Scanning (gitleaks)
+
+    steps:
+    - name: Checkout code (full history)
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Install gitleaks
+      run: |
+        curl -sL https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz | tar xz -C /usr/local/bin gitleaks
+
+    - name: Scan git history for secrets
+      run: gitleaks detect --source . --redact -v
+
   quality:
     runs-on: ubuntu-latest
     name: Code Quality & Unit Tests
@@ -108,9 +125,7 @@ jobs:
     - name: Wait for server to be ready
       run: |
         for i in $(seq 1 30); do
-          if curl -s -o /dev/null -w "%{http_code}" -X POST http://localhost:4003/ \
-            -H "Content-Type: application/json" \
-            -d '{"query":"{ __typename }"}' | grep -q 200; then
+          if curl -s -o /dev/null -w "%{http_code}" http://localhost:4003/ready | grep -q 200; then
             echo "Server is up"
             exit 0
           fi
@@ -125,6 +140,28 @@ jobs:
 
     - name: Run API/collection tests (Postman via Newman)
       run: npm run test:api
+
+    - name: Install k6
+      run: |
+        curl -sL https://github.com/grafana/k6/releases/download/v1.0.0/k6-v1.0.0-linux-amd64.tar.gz | tar xz --strip-components 1 -C /usr/local/bin k6-v1.0.0-linux-amd64/k6
+
+    - name: Smoke-test the k6 load test script
+      run: SMOKE_TEST=true k6 run loadtest/graphql-load-test.js
+
+  k8s-lint:
+    runs-on: ubuntu-latest
+    name: Validate Kubernetes Manifests
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install kubeconform
+      run: |
+        curl -sL https://github.com/yannh/kubeconform/releases/download/v0.8.0/kubeconform-linux-amd64.tar.gz | tar xz -C /usr/local/bin kubeconform
+
+    - name: Validate manifests against the Kubernetes 1.32 schema
+      run: kubeconform -summary -strict -kubernetes-version 1.32.0 k8s/*.yaml
 
   docker:
     runs-on: ubuntu-latest

@@ -378,6 +378,49 @@ const main = async (): Promise<void> => {
     true,
   );
 
+  // ── 25b. CSRF prevention (Apollo Server default, made explicit in
+  // src/index.ts since login's cookie uses sameSite: 'none') ───────────────
+  console.log(
+    '\n[ SECURITY ] — Simple-request CSRF vectors must be rejected',
+  );
+  const rawPost = async (
+    contentType: string,
+    body: string,
+  ): Promise<GqlResponse> => {
+    const res = await fetch(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': contentType },
+      body,
+    });
+    return (await res.json()) as GqlResponse;
+  };
+  const isCsrfRejection = (resp: GqlResponse): boolean =>
+    Boolean(resp.errors?.[0]?.message?.includes('Cross-Site Request Forgery'));
+
+  const textPlainResp = await rawPost(
+    'text/plain',
+    JSON.stringify({ query: '{ __typename }' }),
+  );
+  if (isCsrfRejection(textPlainResp)) {
+    console.log('  ✅ PASS: csrf_text_plain_rejected');
+    passCount += 1;
+  } else {
+    console.log('  ❌ FAIL: csrf_text_plain_rejected');
+    failCount += 1;
+  }
+
+  const formUrlencodedResp = await rawPost(
+    'application/x-www-form-urlencoded',
+    `query=${encodeURIComponent('{ __typename }')}`,
+  );
+  if (isCsrfRejection(formUrlencodedResp)) {
+    console.log('  ✅ PASS: csrf_form_urlencoded_rejected');
+    passCount += 1;
+  } else {
+    console.log('  ❌ FAIL: csrf_form_urlencoded_rejected');
+    failCount += 1;
+  }
+
   // ── 26. union types (not implemented) ────────────────────────────────────
   console.log(
     '\n[ INFO ] — Union types (PostError) — would require a schema refactor',

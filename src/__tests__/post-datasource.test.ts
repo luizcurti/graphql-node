@@ -358,3 +358,63 @@ describe('PostSQLDataSource.batchLoadByUserId', () => {
     expect(result).toEqual([]);
   });
 });
+
+// ─── read replica routing ─────────────────────────────────────────────────────
+
+describe('PostSQLDataSource — read replica routing', () => {
+  it('routes getPosts and batchLoadByUserId to the read connection', async () => {
+    const writeDb = jest.fn(() => {
+      throw new Error('write connection should not be used for pure reads');
+    });
+    const readRows = [makeRow({ id: 1, user_id: 10 })];
+    const readQb = {
+      orderBy: jest.fn().mockReturnThis(),
+      offset: jest.fn().mockReturnThis(),
+      limit: jest.fn().mockReturnThis(),
+      whereIn: jest.fn().mockReturnThis(),
+    };
+    const readDb = jest.fn(() =>
+      Object.assign(Promise.resolve(readRows), readQb),
+    );
+
+    const ds = new PostSQLDataSource(
+      writeDb as unknown as Knex,
+      readDb as unknown as Knex,
+    );
+    ds.initialize({ context: {}, cache: undefined });
+
+    await expect(ds.getPosts({})).resolves.toHaveLength(1);
+    await expect(ds.batchLoadByUserId(10)).resolves.toHaveLength(1);
+
+    expect(writeDb).not.toHaveBeenCalled();
+    expect(readDb).toHaveBeenCalled();
+  });
+
+  it('keeps getPost (point read by id) on the write connection', async () => {
+    const row = makeRow({ id: 3 });
+    const writeDb = jest.fn(() => ({
+      where: jest.fn().mockReturnThis(),
+      first: jest.fn().mockResolvedValue(row),
+    }));
+    const readDb = jest.fn(() => {
+      throw new Error('read connection should not be used here');
+    });
+
+    const ds = new PostSQLDataSource(
+      writeDb as unknown as Knex,
+      readDb as unknown as Knex,
+    );
+    ds.initialize({ context: {}, cache: undefined });
+
+    await expect(ds.getPost(3)).resolves.toEqual(
+      expect.objectContaining({ id: '3' }),
+    );
+    expect(readDb).not.toHaveBeenCalled();
+  });
+
+  it('defaults the read connection to the write connection when not provided', () => {
+    const db = jest.fn();
+    const ds = new PostSQLDataSource(db as unknown as Knex);
+    expect(ds.readDb).toBe(db);
+  });
+});

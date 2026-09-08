@@ -1,0 +1,27 @@
+# Non-secret configuration. Credentials live in secret.example.yaml instead
+# (see k8s/README.md) — never put DATABASE_USER/PASSWORD/JWT_SECRET here.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: graphql-node-config
+  namespace: graphql-node
+data:
+  NODE_ENV: 'production'
+  PORT: '4003'
+  ALLOWED_ORIGINS: 'https://example.com'
+  DATABASE_CLIENT: 'mysql2'
+  DATABASE_HOST: 'mysql'
+  DATABASE_PORT: '3306'
+  DATABASE_NAME: 'graphql_mysql'
+  DATABASE_POOL_MIN: '2'
+  DATABASE_POOL_MAX: '10'
+  LOG_LEVEL: 'info'
+  # Required in production — see src/graphql/pubsub.ts. Provisioned by
+  # redis.yaml.
+  REDIS_URL: 'redis://redis:6379'
+  # Everything below is optional — same env vars as docker-compose/.env.example.
+  # Uncomment and point at real services to enable; omitted here so a fresh
+  # deploy doesn't depend on infrastructure this manifest set doesn't provision.
+  # KAFKA_BROKERS: 'kafka:9092'
+  # DATABASE_REPLICA_HOST: 'mysql-replica'
+  # OTEL_EXPORTER_OTLP_ENDPOINT: 'http://otel-collector:4318'

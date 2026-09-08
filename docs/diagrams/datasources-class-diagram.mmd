@@ -1,14 +1,16 @@
 classDiagram
     class SQLDatasource~TKey, TValue~ {
         +Knex db
+        +Knex readDb
         #context
         #cache
         -DataLoader~TKey, TValue~ _loader
-        +constructor(dbConnection)
+        +constructor(dbConnection, readConnection?)
         +initialize(context, cache) void
         +batchLoad(id) Promise~TValue~
         +batchLoaderCallback(ids) Promise~TValue[]~
     }
+    note for SQLDatasource "readConnection defaults to dbConnection —\nsame connection unless DATABASE_REPLICA_HOST\nis set. See database-scaling.md."
 
     class UserSQLDataSource {
         +tableName = "users"

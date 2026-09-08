@@ -1,0 +1,39 @@
+flowchart TB
+    Client["Client request"]
+
+    subgraph App["Express App — src/index.ts"]
+        HttpMw["httpMetricsMiddleware<br/>(all routes)"]
+        Health["GET /health<br/>liveness — always 200"]
+        Ready["GET /ready<br/>readiness — SELECT 1 on primary"]
+        MetricsEp["GET /metrics<br/>Prometheus exposition"]
+        GraphQL["POST / (GraphQL)"]
+        ApolloPlugin["metricsPlugin<br/>(Apollo Server plugin)"]
+    end
+
+    Registry[("prom-client Registry<br/>src/observability/metrics.ts")]
+    Logger["Pino logger<br/>+ trace_id/span_id mixin"]
+
+    subgraph Otel["OpenTelemetry (opt-in via OTEL_EXPORTER_OTLP_ENDPOINT)"]
+        SDK["NodeSDK<br/>Http + Express instrumentation"]
+        Exporter["OTLP/HTTP exporter"]
+    end
+
+    Collector[("Any OTLP collector<br/>(Jaeger, Tempo, ...)")]
+    Prometheus[("Prometheus<br/>(scrapes /metrics)")]
+    K8s["Kubernetes<br/>livenessProbe / readinessProbe"]
+
+    Client --> HttpMw
+    HttpMw --> Health & Ready & MetricsEp & GraphQL
+    GraphQL --> ApolloPlugin
+
+    HttpMw -->|"http_request_duration_seconds"| Registry
+    ApolloPlugin -->|"graphql_operations_total<br/>graphql_operation_duration_seconds"| Registry
+    MetricsEp -->|"registry.metrics()"| Registry
+    Prometheus -.->|"scrape"| MetricsEp
+
+    Health -.-> K8s
+    Ready -.-> K8s
+
+    SDK -->|"patches http/express<br/>at require time"| App
+    SDK --> Exporter --> Collector
+    App -.->|"active span context"| Logger

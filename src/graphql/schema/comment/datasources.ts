@@ -37,16 +37,18 @@ const commentReducer = (comment: CommentRow): Comment => {
 export class CommentSQLDataSource extends SQLDatasource<string, Comment[]> {
   tableName = 'comments';
 
-  constructor(dbConnection: Knex) {
-    super(dbConnection);
+  constructor(dbConnection: Knex, readConnection?: Knex) {
+    super(dbConnection, readConnection);
   }
 
   async getById(id: string | number): Promise<CommentRow | undefined> {
     return this.db(this.tableName).where('id', '=', id).first();
   }
 
+  // Field resolver for Post.comments — a list read with no write dependency
+  // in the same request, so it's safe to serve from the replica.
   async getByPostId(post_id: string | number): Promise<Comment[]> {
-    const query = this.db(this.tableName).where({ post_id });
+    const query = this.readDb(this.tableName).where({ post_id });
     const comments: CommentRow[] = await query;
     return comments.map((comment) => commentReducer(comment));
   }
@@ -84,7 +86,7 @@ export class CommentSQLDataSource extends SQLDatasource<string, Comment[]> {
   }
 
   async batchLoaderCallback(post_ids: readonly string[]): Promise<Comment[][]> {
-    const query = this.db(this.tableName).whereIn(
+    const query = this.readDb(this.tableName).whereIn(
       'post_id',
       post_ids as string[],
     );

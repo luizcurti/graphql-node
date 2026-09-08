@@ -15,6 +15,18 @@ authenticating anything, even before its 7-day expiry. The trade-off is one
 extra `SELECT` per authenticated request, in exchange for real server-side
 session control.
 
+## Rate limiting is Redis-backed, not per-process
+
+`checkRateLimit`/`clearRateLimit` (step 4 above) use Redis when
+`REDIS_URL` is set — which it already must be in production, for PubSub —
+falling back to an in-memory `Map` only in dev/test. This matters the
+moment there's more than one instance: a per-process counter lets a
+brute-force client get a multiple of the intended 5-attempts-per-15-minutes
+budget just by landing on different pods. See
+[`security-hardening.md`](./security-hardening.md) for how this was found
+(the [Kubernetes manifests](../k8s/README.md) run `replicas: 2`) and
+verified against a real Redis instance.
+
 ## Two authorization primitives, used differently per resolver
 
 - **`checkIsLoggedIn(loggedUserId)`** — "is anyone logged in at all?" Used by

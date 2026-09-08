@@ -4,3 +4,5 @@ dist
 coverage
 .env
 bcrypt-jwt.js
+k8s/secret.yaml
+k8s/*.local.yaml

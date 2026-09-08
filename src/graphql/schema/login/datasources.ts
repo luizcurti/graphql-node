@@ -1,6 +1,7 @@
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { AuthenticationError, UserInputError } from '../../errors';
+import { getRedisClient } from '../../../redis';
 import type { Context } from '../../context/types';
 import type { User } from '../user/sql-datasource';
 
@@ -9,20 +10,24 @@ export interface LoginResult {
   token: string;
 }
 
-// In-memory store for login attempts: key = userName, value = { count, resetAt }
-// In a multi-instance setup, replace with Redis. Sufficient for single-instance prod.
+const MAX_ATTEMPTS = 5;
+const WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+const rateLimitKey = (userName: string): string => `login-attempts:${userName}`;
+
+// In-memory fallback — dev/test only. REDIS_URL is required in production
+// (see graphql/pubsub.ts), so every production request already goes through
+// Redis below; this Map is never the source of truth once there's more than
+// one instance, which is exactly why it isn't used there.
 interface LoginAttemptEntry {
   count: number;
   resetAt: number;
 }
 
-const loginAttempts = new Map<string, LoginAttemptEntry>();
-const MAX_ATTEMPTS = 5;
-const WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+const loginAttemptsMemory = new Map<string, LoginAttemptEntry>();
 
-const checkRateLimit = (userName: string): void => {
+const checkRateLimitInMemory = (userName: string): void => {
   const now = Date.now();
-  const entry = loginAttempts.get(userName);
+  const entry = loginAttemptsMemory.get(userName);
 
   if (entry && now < entry.resetAt) {
     if (entry.count >= MAX_ATTEMPTS) {
@@ -34,12 +39,37 @@ const checkRateLimit = (userName: string): void => {
     }
     entry.count += 1;
   } else {
-    loginAttempts.set(userName, { count: 1, resetAt: now + WINDOW_MS });
+    loginAttemptsMemory.set(userName, { count: 1, resetAt: now + WINDOW_MS });
   }
 };
 
-const clearRateLimit = (userName: string): void => {
-  loginAttempts.delete(userName);
+const clearRateLimitInMemory = (userName: string): void => {
+  loginAttemptsMemory.delete(userName);
+};
+
+const checkRateLimit = async (userName: string): Promise<void> => {
+  const redis = getRedisClient();
+  if (!redis) return checkRateLimitInMemory(userName);
+
+  const key = rateLimitKey(userName);
+  const count = await redis.incr(key);
+  if (count === 1) {
+    await redis.pexpire(key, WINDOW_MS);
+  }
+
+  if (count > MAX_ATTEMPTS) {
+    const ttlMs = await redis.pttl(key);
+    const minutes = Math.max(1, Math.ceil(ttlMs / 60000));
+    throw new UserInputError(
+      `Too many login attempts. Try again in ${minutes} minute(s).`,
+    );
+  }
+};
+
+const clearRateLimit = async (userName: string): Promise<void> => {
+  const redis = getRedisClient();
+  if (!redis) return clearRateLimitInMemory(userName);
+  await redis.del(rateLimitKey(userName));
 };
 
 export class LoginApi {
@@ -64,7 +94,7 @@ export class LoginApi {
   }
 
   async login(userName: string, password: string): Promise<LoginResult> {
-    checkRateLimit(userName);
+    await checkRateLimit(userName);
 
     const user = await this.getUser(userName);
 
@@ -75,7 +105,7 @@ export class LoginApi {
       throw new AuthenticationError('Invalid password.');
     }
 
-    clearRateLimit(userName);
+    await clearRateLimit(userName);
 
     const token = this.createJwtToken({ userId });
     await this.userDb.setToken(userId, token);

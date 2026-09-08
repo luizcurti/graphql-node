@@ -2,8 +2,8 @@ flowchart TB
     Dev["Developer / CI runner"]
 
     subgraph Compose["docker-compose.yml"]
-        subgraph AppContainer["graphql_app<br/>(Dockerfile, node:22-alpine)"]
-            App["Express + Apollo Server<br/>dist/index.js"]
+        subgraph AppContainer["graphql_app<br/>(Dockerfile, node:24-alpine)"]
+            App["Express + Apollo Server<br/>dist/index.js<br/>healthcheck: GET /ready"]
         end
 
         subgraph DBContainer["graphql_mysql<br/>(mysql:8.0)"]
@@ -13,15 +13,21 @@ flowchart TB
         subgraph KafkaContainer["graphql_kafka<br/>(apache/kafka, profile: kafka)"]
             Kafka[("Kafka broker<br/>topic: comment.created")]
         end
+
+        subgraph JaegerContainer["graphql_jaeger<br/>(jaegertracing/all-in-one, profile: observability)"]
+            Jaeger[("Jaeger UI :16686<br/>OTLP/HTTP :4318")]
+        end
     end
 
     Redis[("Redis<br/>(production only, external)")]
 
     Dev -->|"docker compose up -d --build"| Compose
     Dev -->|"docker compose --profile kafka up -d kafka<br/>(optional)"| KafkaContainer
+    Dev -->|"docker compose --profile observability up -d jaeger<br/>(optional)"| JaegerContainer
     Dev -->|"npm run db:setup<br/>(migrate + seed)"| MySQL
     Dev -->|"HTTP :4003 / ws"| App
 
     App -->|"knex (mysql2)"| MySQL
-    App -.->|"REQUIRED in production<br/>PubSub for subscriptions"| Redis
+    App -.->|"REQUIRED in production<br/>PubSub + login rate limiting"| Redis
     App -.->|"OPTIONAL — KAFKA_BROKERS<br/>event backbone for comment.created"| Kafka
+    App -.->|"OPTIONAL — OTEL_EXPORTER_OTLP_ENDPOINT"| Jaeger

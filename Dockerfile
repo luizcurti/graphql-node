@@ -18,4 +18,4 @@ RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=builder /app/dist ./dist
 
 EXPOSE 4003
-CMD ["node", "-r", "dotenv/config", "dist/index.js"]
+CMD ["node", "-r", "dotenv/config", "-r", "./dist/observability/tracing.js", "dist/index.js"]

@@ -41,7 +41,7 @@ services:
     env_file:
       - .env
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://localhost:4003/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: '{ __typename }' }) }).then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      test: ["CMD", "node", "-e", "fetch('http://localhost:4003/ready').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -75,6 +75,21 @@ services:
       timeout: 10s
       retries: 10
       start_period: 30s
+
+  # Optional Jaeger all-in-one, for the OpenTelemetry traces the app exports
+  # when OTEL_EXPORTER_OTLP_ENDPOINT is set (see ../src/observability/tracing.ts).
+  # Off by default; opt in with `docker compose --profile observability up -d`
+  # and set OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318 (container-to-
+  # container) or http://localhost:4318 (host) in .env. UI at :16686.
+  jaeger:
+    container_name: graphql_jaeger
+    hostname: jaeger
+    image: jaegertracing/all-in-one:1.60
+    restart: always
+    profiles: ["observability"]
+    ports:
+      - "${JAEGER_UI_PORT:-16686}:16686"
+      - "${JAEGER_OTLP_HTTP_PORT:-4318}:4318"
 
 volumes:
   mysql_data:

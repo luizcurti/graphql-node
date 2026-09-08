@@ -68,11 +68,11 @@ export class PostSQLDataSource extends SQLDatasource<string, Post[]> {
   tableName = 'posts';
   private _byUserIdLoader: DataLoader<string, Post[]>;
 
-  constructor(dbConnection: Knex) {
-    super(dbConnection);
+  constructor(dbConnection: Knex, readConnection?: Knex) {
+    super(dbConnection, readConnection);
     this._byUserIdLoader = new DataLoader(
       async (userIds: readonly string[]) => {
-        const rows: PostRow[] = await this.db(this.tableName).whereIn(
+        const rows: PostRow[] = await this.readDb(this.tableName).whereIn(
           'user_id',
           userIds as string[],
         );
@@ -85,13 +85,15 @@ export class PostSQLDataSource extends SQLDatasource<string, Post[]> {
     );
   }
 
+  // Query.posts — a list read with no write dependency in the same request,
+  // so it's safe to serve from the replica.
   async getPosts({
     _sort,
     _order,
     _start,
     _limit,
   }: ApiFiltersInput = {}): Promise<Post[]> {
-    let query = this.db(this.tableName);
+    let query = this.readDb(this.tableName);
     if (_sort) {
       const col = resolveSort(_sort);
       if (!ALLOWED_SORT_COLUMNS.has(col)) {
@@ -105,6 +107,9 @@ export class PostSQLDataSource extends SQLDatasource<string, Post[]> {
     return rows.map(postReducer);
   }
 
+  // Stays on the write connection (not this.readDb): createPost/updatePost/
+  // deletePost call this right after a write and need to see it immediately,
+  // which a lagging replica isn't guaranteed to.
   async getPost(id: string | number): Promise<Post | null> {
     const row: PostRow | undefined = await this.db(this.tableName)
       .where('id', id)

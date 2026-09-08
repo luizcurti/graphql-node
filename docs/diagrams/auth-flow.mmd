@@ -4,6 +4,7 @@ sequenceDiagram
     participant S as Apollo Server
     participant Ctx as context()
     participant LA as LoginApi
+    participant R as Redis<br/>(rate limit)
     participant UDB as UserSQLDataSource
     participant DB as MySQL
 
@@ -12,7 +13,11 @@ sequenceDiagram
     S->>Ctx: context({ req, res })
     Ctx-->>S: { loggedUserId: empty, dataSources }
     S->>LA: login(userName, password)
-    LA->>LA: checkRateLimit(userName)<br/>(5 tries / 15 min)
+    LA->>R: INCR + PEXPIRE login-attempts:userName<br/>(REDIS_URL set — shared across instances)
+    Note right of R: REDIS_URL unset → in-memory Map instead<br/>(dev/test only, see security-hardening.md)
+    alt 6th attempt within 15 min
+        LA-->>C: UserInputError "Too many login attempts"
+    end
     LA->>UDB: getUserByUserName(userName)
     UDB->>DB: SELECT * FROM users WHERE user_name = ?
     DB-->>UDB: row
@@ -23,6 +28,7 @@ sequenceDiagram
     alt wrong password
         LA-->>C: AuthenticationError "Invalid password."
     end
+    LA->>R: DEL login-attempts:userName
     LA->>LA: createJwtToken({ userId }) — 7d expiry
     LA->>UDB: setToken(userId, token)
     UDB->>DB: UPDATE users SET token = ? WHERE id = ?

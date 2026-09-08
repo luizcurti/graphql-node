@@ -1,6 +1,7 @@
 import type { Comment } from '../graphql/schema/comment/datasources';
 import { pubSub, CREATED_COMMENT_TRIGGER } from '../graphql/pubsub';
 import { logger } from '../utils/logger';
+import { kafkaMessagesProducedTotal } from '../observability/metrics';
 import { getKafka } from './client';
 import { COMMENT_CREATED_TOPIC } from './topics';
 
@@ -35,6 +36,7 @@ export const publishCommentCreated = async (
     topic: COMMENT_CREATED_TOPIC,
     messages: [{ value: JSON.stringify(event) }],
   });
+  kafkaMessagesProducedTotal.inc({ topic: COMMENT_CREATED_TOPIC });
 };
 
 export const disconnectProducer = async (): Promise<void> => {

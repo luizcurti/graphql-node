@@ -90,4 +90,96 @@ describe('knex/index', () => {
     expect(knexFnMock).toHaveBeenCalledWith({ client: 'mysql2' });
     expect(knex).toBe(fakeKnexInstance);
   });
+
+  it('knexRead is the same instance as knex when DATABASE_REPLICA_HOST is unset', () => {
+    process.env.NODE_ENV = 'development';
+    delete process.env.DATABASE_REPLICA_HOST;
+    const fakeKnexInstance = { destroy: jest.fn() };
+    const knexFnMock = jest.fn(() => fakeKnexInstance);
+
+    jest.doMock('knex', () => ({ __esModule: true, default: knexFnMock }));
+    jest.doMock('../knex/knexfile', () => ({
+      __esModule: true,
+      default: {
+        development: {
+          client: 'mysql2',
+          connection: { host: 'primary-host', port: 3306 },
+        },
+      },
+    }));
+
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { knex, knexRead } = require('../knex/index');
+
+    expect(knexRead).toBe(knex);
+    expect(knexFnMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('builds a separate read-replica connection when DATABASE_REPLICA_HOST is set', () => {
+    process.env.NODE_ENV = 'development';
+    process.env.DATABASE_REPLICA_HOST = 'replica-host';
+    process.env.DATABASE_PORT = '3306';
+    process.env.DATABASE_REPLICA_PORT = '3307';
+    const primaryInstance = { name: 'primary' };
+    const replicaInstance = { name: 'replica' };
+    const knexFnMock = jest
+      .fn()
+      .mockReturnValueOnce(primaryInstance)
+      .mockReturnValueOnce(replicaInstance);
+
+    jest.doMock('knex', () => ({ __esModule: true, default: knexFnMock }));
+    jest.doMock('../knex/knexfile', () => ({
+      __esModule: true,
+      default: {
+        development: {
+          client: 'mysql2',
+          connection: { host: 'primary-host', port: 3306 },
+        },
+      },
+    }));
+
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { knex, knexRead } = require('../knex/index');
+
+    expect(knex).toBe(primaryInstance);
+    expect(knexRead).toBe(replicaInstance);
+    expect(knexFnMock).toHaveBeenCalledTimes(2);
+    expect(knexFnMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        client: 'mysql2',
+        connection: expect.objectContaining({
+          host: 'replica-host',
+          port: 3307,
+        }),
+      }),
+    );
+  });
+
+  it('falls back to DATABASE_PORT for the replica when DATABASE_REPLICA_PORT is unset', () => {
+    process.env.NODE_ENV = 'development';
+    process.env.DATABASE_REPLICA_HOST = 'replica-host';
+    process.env.DATABASE_PORT = '3306';
+    delete process.env.DATABASE_REPLICA_PORT;
+    const knexFnMock = jest.fn(() => ({}));
+
+    jest.doMock('knex', () => ({ __esModule: true, default: knexFnMock }));
+    jest.doMock('../knex/knexfile', () => ({
+      __esModule: true,
+      default: {
+        development: {
+          client: 'mysql2',
+          connection: { host: 'primary-host', port: 3306 },
+        },
+      },
+    }));
+
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    require('../knex/index');
+
+    expect(knexFnMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        connection: expect.objectContaining({ port: 3306 }),
+      }),
+    );
+  });
 });

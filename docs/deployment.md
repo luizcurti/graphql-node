@@ -1,6 +1,9 @@
 # Deployment / Container Architecture
 
-How the app and its database run together under Docker Compose.
+How the app and its database run together under Docker Compose — and, for
+Kubernetes, see [`../k8s/README.md`](../k8s/README.md) instead (Deployment/
+Service/ConfigMap/Secret/HPA manifests, built and verified against a real
+kind cluster).
 
 ![Deployment diagram](./images/deployment.svg)
 
@@ -34,3 +37,19 @@ How the app and its database run together under Docker Compose.
   (host, e.g. `npm run dev`). Leaving `KAFKA_BROKERS` unset is just as valid:
   comment events fall back to publishing straight onto PubSub (see
   [`subscriptions-flow.md`](./subscriptions-flow.md#kafka-as-an-optional-event-backbone)).
+- **Jaeger is opt-in via a Compose profile, same pattern as Kafka.** The
+  `jaeger` service (`jaegertracing/all-in-one`) is tagged
+  `profiles: ["observability"]` — bring it up with
+  `docker compose --profile observability up -d jaeger` and point the app
+  at it with `OTEL_EXPORTER_OTLP_ENDPOINT`. `/metrics` and `/health`/`/ready`
+  need no extra service at all — they're always on. See
+  [`observability.md`](./observability.md).
+- **The app container's own healthcheck uses `/ready`,** not a GraphQL
+  query — a plain HTTP GET that fails fast if the primary DB connection is
+  down, which is also what CI's "wait for server" step polls.
+- **Kubernetes is a separate manifest set, not layered onto this Compose
+  file.** [`k8s/`](../k8s/) has its own MySQL/Redis/app Deployments, since a
+  cluster needs `REDIS_URL` set from the start (`NODE_ENV=production` there
+  enforces it immediately — confirmed by the app actually crash-looping
+  until Redis was wired in). Liveness/readiness probes point at `/health`
+  and `/ready` too.

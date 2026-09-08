@@ -33,7 +33,26 @@ MySQL and back — including the real-time path via GraphQL subscriptions.
   PubSub directly — same event, no broker required. Either way, the
   `createdComment` subscription resolver is unaware Kafka exists. See
   [`subscriptions-flow.md`](./subscriptions-flow.md).
+- **Optional read replica.** Every `*SQLDataSource` holds two connections
+  (`db` write, `readDb` read); list queries and DataLoader batch fetches use
+  `readDb`, which defaults to `db` unless `DATABASE_REPLICA_HOST` is set.
+  Point reads by id and everything inside a mutation always use `db`, to
+  avoid read-your-writes bugs from replica lag. See
+  [`database-scaling.md`](./database-scaling.md).
+- **Observability.** `/metrics` (Prometheus) and `/health` + `/ready` are
+  always on; OpenTelemetry tracing is opt-in via `OTEL_EXPORTER_OTLP_ENDPOINT`
+  and, when enabled, stamps `trace_id`/`span_id` onto every log line. See
+  [`observability.md`](./observability.md).
 - **Defense in depth.** Query depth is capped at 7 (`graphql-depth-limit`),
-  introspection is disabled outside development, and every mutation that
-  touches a specific user's data re-checks ownership (`checkOwner`) even
-  though the caller is already authenticated.
+  a query-complexity plugin caps total selected fields at 1000 (catches the
+  wide-but-shallow queries depth limiting alone misses), introspection is
+  disabled outside development, and every mutation that touches a specific
+  user's data re-checks ownership (`checkOwner`) even though the caller is
+  already authenticated.
+- **Login rate limiting is Redis-backed, not per-process.** `REDIS_URL` is
+  already required in production for PubSub, so
+  `LoginApi`'s rate limiter (`src/graphql/schema/login/datasources.ts`)
+  reuses it via `src/redis.ts` — necessary once there's more than one
+  instance, or a per-pod in-memory counter lets a brute-force client get a
+  multiple of the intended attempt budget by hitting different pods. See
+  [`security-hardening.md`](./security-hardening.md).

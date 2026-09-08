@@ -1,12 +1,17 @@
 describe('kafka producer', () => {
   const publishMock = jest.fn();
+  const kafkaMessagesProducedTotal = { inc: jest.fn() };
 
   beforeEach(() => {
     jest.resetModules();
     publishMock.mockClear();
+    kafkaMessagesProducedTotal.inc.mockClear();
     jest.doMock('../graphql/pubsub', () => ({
       pubSub: { publish: publishMock },
       CREATED_COMMENT_TRIGGER: 'CREATED_COMMENT',
+    }));
+    jest.doMock('../observability/metrics', () => ({
+      kafkaMessagesProducedTotal,
     }));
   });
 
@@ -56,6 +61,10 @@ describe('kafka producer', () => {
       messages: [{ value: JSON.stringify(event) }],
     });
     expect(publishMock).not.toHaveBeenCalled();
+    expect(kafkaMessagesProducedTotal.inc).toHaveBeenCalledWith({
+      topic: 'comment.created',
+    });
+    expect(kafkaMessagesProducedTotal.inc).toHaveBeenCalledTimes(2);
 
     await disconnectProducer();
     expect(disconnect).toHaveBeenCalledTimes(1);

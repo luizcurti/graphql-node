@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: graphql-node
+  namespace: graphql-node
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: graphql-node
+  template:
+    metadata:
+      labels:
+        app: graphql-node
+      annotations:
+        # Scrape target for a Prometheus using annotation-based discovery
+        # (kube-prometheus-stack / prometheus-operator PodMonitors are the
+        # more common approach in a real cluster — this is the low-ceremony
+        # version). See docs/observability.md.
+        prometheus.io/scrape: 'true'
+        prometheus.io/port: '4003'
+        prometheus.io/path: '/metrics'
+    spec:
+      containers:
+        - name: graphql-node
+          # Built locally and loaded into the cluster — see k8s/README.md.
+          # Point at a real registry (ghcr.io/..., etc.) outside of kind.
+          image: apollo-graphql-starter-app:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 4003
+          envFrom:
+            - configMapRef:
+                name: graphql-node-config
+            - secretRef:
+                name: graphql-node-secrets
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 4003
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 4003
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: graphql-node
+  namespace: graphql-node
+spec:
+  selector:
+    app: graphql-node
+  ports:
+    - port: 4003
+      targetPort: 4003
+  type: ClusterIP

@@ -20,8 +20,8 @@ const sharedConfig: Omit<Knex.Config, 'migrations' | 'seeds'> = {
     timezone: 'Z',
   },
   pool: {
-    min: 2,
-    max: 10,
+    min: Number(process.env.DATABASE_POOL_MIN) || 2,
+    max: Number(process.env.DATABASE_POOL_MAX) || 10,
     afterCreate: (
       conn: { query: (sql: string, cb: (err: Error | null) => void) => void },
       done: (err: Error | null, conn: unknown) => void,

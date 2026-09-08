@@ -638,3 +638,68 @@ describe('UserSQLDataSource.setToken / clearToken', () => {
     expect(qb.update).toHaveBeenCalledWith({ token: '' });
   });
 });
+
+// ─── read replica routing ─────────────────────────────────────────────────────
+
+describe('UserSQLDataSource — read replica routing', () => {
+  it('routes getUsers, batchLoadById and getUserByUserName to the read connection', async () => {
+    const writeDb = jest.fn(() => {
+      throw new Error('write connection should not be used for pure reads');
+    });
+    const readRows = [makeRow({ id: 1 }), makeRow({ id: 2, user_name: 'bob' })];
+    const readQb = {
+      orderBy: jest.fn().mockReturnThis(),
+      offset: jest.fn().mockReturnThis(),
+      limit: jest.fn().mockReturnThis(),
+      whereIn: jest.fn().mockReturnThis(),
+    };
+    const readDb = jest.fn(() =>
+      Object.assign(Promise.resolve(readRows), readQb),
+    );
+
+    const ds = new UserSQLDataSource(
+      writeDb as unknown as Knex,
+      readDb as unknown as Knex,
+    );
+    ds.initialize({ context: {}, cache: undefined });
+
+    await expect(ds.getUsers({})).resolves.toHaveLength(2);
+    await expect(ds.batchLoadById(1)).resolves.toEqual(
+      expect.objectContaining({ id: '1' }),
+    );
+    await expect(ds.getUserByUserName('bob')).resolves.toEqual(
+      expect.objectContaining({ userName: 'bob' }),
+    );
+
+    expect(writeDb).not.toHaveBeenCalled();
+    expect(readDb).toHaveBeenCalled();
+  });
+
+  it('keeps getUser (point read by id) on the write connection', async () => {
+    const row = makeRow({ id: 7 });
+    const writeDb = jest.fn(() => ({
+      where: jest.fn().mockReturnThis(),
+      first: jest.fn().mockResolvedValue(row),
+    }));
+    const readDb = jest.fn(() => {
+      throw new Error('read connection should not be used here');
+    });
+
+    const ds = new UserSQLDataSource(
+      writeDb as unknown as Knex,
+      readDb as unknown as Knex,
+    );
+    ds.initialize({ context: {}, cache: undefined });
+
+    await expect(ds.getUser(7)).resolves.toEqual(
+      expect.objectContaining({ id: '7' }),
+    );
+    expect(readDb).not.toHaveBeenCalled();
+  });
+
+  it('defaults the read connection to the write connection when not provided', () => {
+    const db = jest.fn();
+    const ds = new UserSQLDataSource(db as unknown as Knex);
+    expect(ds.readDb).toBe(db);
+  });
+});

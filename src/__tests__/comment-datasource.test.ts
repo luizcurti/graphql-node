@@ -200,3 +200,61 @@ describe('CommentSQLDataSource.batchLoaderCallback', () => {
     expect(result[2]).toHaveLength(0); // post_id '99' has no comments
   });
 });
+
+// ─── read replica routing ─────────────────────────────────────────────────────
+
+describe('CommentSQLDataSource — read replica routing', () => {
+  it('routes getByPostId and batchLoaderCallback to the read connection', async () => {
+    const writeDb = jest.fn(() => {
+      throw new Error('write connection should not be used for pure reads');
+    });
+    const readRows = [makeCommentRow({ id: 1, post_id: '5' })];
+    const readQb = {
+      where: jest.fn().mockReturnThis(),
+      whereIn: jest.fn().mockReturnThis(),
+    };
+    const readDb = jest.fn(() =>
+      Object.assign(Promise.resolve(readRows), readQb),
+    );
+
+    const ds = new CommentSQLDataSource(
+      writeDb as unknown as Knex,
+      readDb as unknown as Knex,
+    );
+    ds.initialize({ context: {}, cache: undefined });
+
+    await expect(ds.getByPostId('5')).resolves.toHaveLength(1);
+    await expect(ds.batchLoaderCallback(['5'])).resolves.toEqual([
+      expect.arrayContaining([expect.objectContaining({ id: 1 })]),
+    ]);
+
+    expect(writeDb).not.toHaveBeenCalled();
+    expect(readDb).toHaveBeenCalled();
+  });
+
+  it('keeps getById (point read) on the write connection', async () => {
+    const row = makeCommentRow({ id: 9 });
+    const writeDb = jest.fn(() => ({
+      where: jest.fn().mockReturnThis(),
+      first: jest.fn().mockResolvedValue(row),
+    }));
+    const readDb = jest.fn(() => {
+      throw new Error('read connection should not be used here');
+    });
+
+    const ds = new CommentSQLDataSource(
+      writeDb as unknown as Knex,
+      readDb as unknown as Knex,
+    );
+    ds.initialize({ context: {}, cache: undefined });
+
+    await expect(ds.getById(9)).resolves.toEqual(row);
+    expect(readDb).not.toHaveBeenCalled();
+  });
+
+  it('defaults the read connection to the write connection when not provided', () => {
+    const db = jest.fn();
+    const ds = new CommentSQLDataSource(db as unknown as Knex);
+    expect(ds.readDb).toBe(db);
+  });
+});

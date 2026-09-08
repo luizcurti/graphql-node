@@ -16,7 +16,8 @@ Live GraphQL subscriptions over Redis PubSub — with an optional Kafka event ba
 | Authentication | JWT (jsonwebtoken) + bcrypt |
 | Subscriptions | graphql-ws over Redis PubSub (ioredis) · in-memory fallback in dev |
 | Event backbone | Kafka (kafkajs) — optional producer/consumer group feeding PubSub · direct fallback when unconfigured |
-| Logging | Pino (pino-pretty in dev, JSON in prod) |
+| Observability | Prometheus metrics (`@prometheus-io/client`) + `/health`/`/ready` always on · OpenTelemetry tracing opt-in |
+| Logging | Pino (pino-pretty in dev, JSON in prod) — trace-id correlated when tracing is on |
 | Transpiler | Sucrase (types are stripped, not checked — see `npm run typecheck`) |
 | Testing | Jest + @sucrase/jest-plugin |
 
@@ -32,20 +33,27 @@ src/
 │   │   ├── index.ts                # JWT verification, request context
 │   │   └── types.ts                # Context / DataSources types
 │   ├── pubsub.ts                    # Redis / in-memory PubSub
-│   ├── datasources/sql/            # Base SQLDatasource class
+│   ├── complexity-limit.ts          # Query-complexity plugin (caps total selected fields)
+│   ├── datasources/sql/            # Base SQLDatasource class (db + readDb connections)
 │   └── schema/
 │       ├── user/                   # User CRUD + DataLoader
 │       ├── post/                   # Post CRUD + DataLoader
 │       ├── comment/                # Comment mutations + Subscription
-│       ├── login/                  # Login / Logout + rate limiting
+│       ├── login/                  # Login / Logout + Redis-backed rate limiting
 │       └── api-filters/            # Pagination/sorting input types
 ├── kafka/
 │   ├── client.ts                    # Kafka instance factory (null if KAFKA_BROKERS unset)
 │   ├── producer.ts                  # publishCommentCreated() — Kafka or direct PubSub fallback
 │   ├── consumer.ts                  # Consumer group → republishes onto PubSub
 │   └── topics.ts                    # Topic name constants
+├── observability/
+│   ├── metrics.ts                   # Prometheus registry, HTTP + GraphQL + Kafka metrics
+│   ├── health.ts                    # /health (liveness) and /ready (readiness) handlers
+│   ├── tracing.ts                   # OpenTelemetry NodeSDK bootstrap (opt-in, loaded via -r)
+│   └── apollo-plugin.ts             # Apollo Server plugin recording GraphQL operation metrics
+├── redis.ts                        # General-purpose Redis client (login rate limiting)
 └── knex/
-    ├── index.ts                    # Knex connection factory
+    ├── index.ts                    # Knex connection factory (db + optional read replica)
     ├── knexfile.ts                 # DB config per environment
     ├── migrations/                 # Schema migrations
     └── seeds/                      # Development seed data
@@ -53,10 +61,12 @@ src/
 
 ## Prerequisites
 
-- [Node.js](https://nodejs.org/) v22+
+- [Node.js](https://nodejs.org/) v24+
 - [Docker](https://www.docker.com/) (for the MySQL container)
-- Redis (required in production for subscriptions)
+- Redis (required in production — subscriptions PubSub and login rate limiting)
 - Kafka (optional — event backbone for `comment.created`; see [Docker](#docker) below)
+- [k6](https://k6.io/) (optional — for `npm run loadtest`)
+- [kind](https://kind.sigs.k8s.io/) + `kubectl` (optional — for trying the [Kubernetes manifests](#kubernetes) locally)
 
 ## Getting Started
 
@@ -115,11 +125,15 @@ http://localhost:4003/graphql
 | `DATABASE_NAME` | Yes | Database name |
 | `DATABASE_USER` | Yes | Database user |
 | `DATABASE_PASSWORD` | Yes | Database password |
+| `DATABASE_POOL_MIN` / `DATABASE_POOL_MAX` | No | Knex connection pool size (defaults: `2` / `10`) |
+| `DATABASE_REPLICA_HOST` / `DATABASE_REPLICA_PORT` | No | Optional read replica for list/batch queries — see [`docs/database-scaling.md`](./docs/database-scaling.md) |
 | `MYSQL_ROOT_PASSWORD` | Yes | MySQL root password (Docker only) |
 | `REDIS_URL` | Prod only | Redis connection URL for subscriptions |
 | `KAFKA_BROKERS` | No | Comma-separated Kafka broker list — enables the Kafka event backbone for `comment.created`; falls back to direct PubSub publish when unset |
 | `KAFKA_CLIENT_ID` | No | Kafka client id (default: `graphql-node`) |
 | `KAFKA_CONSUMER_GROUP` | No | Kafka consumer group id (default: `graphql-node-subscriptions`) |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | No | Enables OpenTelemetry tracing, exported to this OTLP/HTTP collector — see [`docs/observability.md`](./docs/observability.md) |
+| `OTEL_SERVICE_NAME` | No | Service name reported in traces (default: `graphql-node`) |
 | `LOG_LEVEL` | No | Pino log level (default: `info`) |
 
 ## API
@@ -194,11 +208,13 @@ Authorization: Bearer <token>
 
 - JWT validated on every request against the database token (stateful sessions)
 - `JWT_SECRET` must be ≥ 32 characters — server exits on startup if invalid
-- Query depth limited to **7 levels**
+- Query depth limited to **7 levels**, query complexity capped at **1000 selected fields** (catches wide-but-shallow alias abuse depth limiting misses — see [`docs/security-hardening.md`](./docs/security-hardening.md))
 - GraphQL introspection **disabled in production**
-- Login rate limiting: **5 attempts per 15 minutes** per username
+- Login rate limiting: **5 attempts per 15 minutes** per username — Redis-backed (shared across instances) when `REDIS_URL` is set, in-memory otherwise
+- CSRF prevention enabled (Apollo Server default, set explicitly) — verified live against `text/plain` and `application/x-www-form-urlencoded` request forgery, both rejected; regression-tested in `e2e-test.ts`
 - Tokens stored only in `httpOnly + secure` cookies
 - All credentials via environment variables (never hardcoded)
+- CI scans the full git history for secrets on every push ([gitleaks](https://github.com/gitleaks/gitleaks)) and Dependabot opens a PR weekly for any dependency with a known vulnerability — see [`docs/security-hardening.md`](./docs/security-hardening.md)
 
 ## Available Scripts
 
@@ -212,6 +228,7 @@ npm run test:watch       # Run tests in watch mode
 npm run test:integration # Run integration tests against a real MySQL (needs db:setup first)
 npm run test:e2e         # Run e2e-test.ts against a running server
 npm run test:api         # Run the Postman collection (via `npx newman`) against a running server
+npm run loadtest         # Run the k6 load test against a running server (requires k6 installed)
 npm run test:ci          # lint:check + typecheck + test + build
 npm run typecheck        # Type-check the project with tsc (no emit)
 
@@ -241,21 +258,24 @@ npm run test:api          # Postman collection (via newman) against a live serve
 
 ### Unit tests (`npm test`)
 
-172 tests across 18 suites, with **100% statement/branch/function/line
+208 tests across 24 suites, with **100% statement/branch/function/line
 coverage** on every business-logic module (resolvers, datasources, auth
-context, pubsub, kafka, validators — see `npm test -- --coverage`). Entry-point
-bootstrap (`src/index.ts`) and migrations/seeds are intentionally excluded
-from that figure — they're covered by the integration suite instead, which
-exercises them against a real database rather than mocks.
+context, pubsub, kafka, observability, validators — see `npm test -- --coverage`).
+Entry-point bootstrap (`src/index.ts`) and migrations/seeds are intentionally
+excluded from that figure — they're covered by the integration suite
+instead, which exercises them against a real database rather than mocks.
 
 - `login-functions` — `checkIsLoggedIn`, `checkOwner`
 - `user-validators` — `validateUserName`, `validateUserPassword`
 - `user-resolvers` / `post-resolvers` / `comment-resolvers` — all Query, Mutation, field resolvers, and the real subscription filter (via `withFilter` + pubsub)
-- `login-api` — full login/logout flow, rate limiting, cookie behavior
-- `user-datasource` / `post-datasource` / `comment-datasource` — reducers, whitelist validation, create/update/delete, DataLoader batch functions, publishing to the Kafka producer on comment creation
+- `login-api` — full login/logout flow, rate limiting (both the in-memory fallback and the Redis-backed path), cookie behavior
+- `user-datasource` / `post-datasource` / `comment-datasource` — reducers, whitelist validation, create/update/delete, DataLoader batch functions, publishing to the Kafka producer on comment creation, and read-replica routing (which methods use `readDb` vs. `db`)
 - `context` — every branch of JWT/cookie authentication
 - `kafka-client` / `kafka-producer` / `kafka-consumer` — Kafka-configured vs. unconfigured branches, connect-once memoization, and malformed-message handling
-- `pubsub`, `sql-datasource`, `schema-index`, `logger`, `knex-config` — supporting modules (env-dependent branches, base class behavior, module wiring)
+- `observability-metrics` / `observability-health` / `observability-apollo-plugin` / `observability-tracing` — HTTP/GraphQL/Kafka metric recording, liveness always-200, readiness happy/DB-down paths, and OTel SDK start/shutdown with tracing enabled/disabled
+- `redis` — the same optional-additive pattern as `kafka-client`, applied to the general-purpose Redis client
+- `complexity-limit` — under budget, over budget (many aliases, low depth), and the required-variable regression case that broke the first implementation
+- `pubsub`, `sql-datasource`, `schema-index`, `logger`, `knex-config` — supporting modules (env-dependent branches, base class behavior, module wiring, read-replica connection building, trace-id log mixin)
 
 ### Integration tests (`npm run test:integration`)
 
@@ -266,8 +286,11 @@ user's posts and a post's comments.
 
 ### End-to-end tests (`npm run test:e2e`)
 
-28 checks that run real GraphQL requests against a running server — the
-same happy-path and rejected-without-auth scenarios a real client would hit.
+30 checks that run real GraphQL requests against a running server — the
+same happy-path and rejected-without-auth scenarios a real client would
+hit, plus two CSRF-prevention checks that need raw HTTP requests with a
+non-JSON content type, so they live here rather than in the mocked unit
+suite.
 
 ### API / collection tests (`npm run test:api`)
 
@@ -283,6 +306,23 @@ Like `test:e2e`, it expects a running server with freshly seeded data
 (`npm run db:setup`); running it twice in a row without reseeding will fail
 on requests that assert uniqueness (e.g. duplicate comment detection), since
 the first run's data is still there.
+
+### Load tests (`npm run loadtest`)
+
+A separate exercise from the four correctness layers above — concurrent
+load via [k6](https://k6.io/), checking not just that reads stay fast under
+load but that auth rejection, the query depth limit, and duplicate-comment
+detection all keep working correctly while the server is busy, not just
+when idle. See [`docs/load-testing.md`](./docs/load-testing.md) for
+scenarios, thresholds, and a captured example run.
+
+The full run above isn't wired into CI (it's a performance benchmark, not a
+correctness gate — run it manually before a release or when touching the
+hot paths it covers). CI does run a `SMOKE_TEST=true` variant of the same
+script after the `integration` job's e2e/API tests (3 seconds per scenario,
+thresholds still enforced) purely so a broken query or schema change in the
+script itself fails fast, instead of only being discovered the next time
+someone runs the real benchmark by hand.
 
 ## Database
 
@@ -371,16 +411,55 @@ Without `KAFKA_BROKERS`, `createComment` publishes straight onto PubSub, so
 subscriptions work identically either way — see
 [`docs/subscriptions-flow.md`](./docs/subscriptions-flow.md#kafka-as-an-optional-event-backbone).
 
+### Observability
+
+```
+http://localhost:4003/health   # liveness — always 200
+http://localhost:4003/ready    # readiness — 200/503 based on a real DB check
+http://localhost:4003/metrics  # Prometheus exposition format
+```
+
+Tracing is opt-in — bring up a local collector and point the app at it:
+
+```bash
+docker compose --profile observability up -d jaeger
+# .env: OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+```
+
+Jaeger's UI is then at `http://localhost:16686`. See
+[`docs/observability.md`](./docs/observability.md) for what's always on vs.
+opt-in, and how it was verified against a real collector.
+
+## Kubernetes
+
+Plain Deployment/Service/ConfigMap/Secret/HPA manifests in
+[`k8s/`](./k8s/) — no Helm/Kustomize. Built and checked against a real
+[kind](https://kind.sigs.k8s.io/) cluster (image loaded in, pods reaching
+`Ready` off `/ready`, a GraphQL query answered through the `Service`, the
+HPA computing a real value once metrics-server was added) rather than just
+written and assumed correct. See [`k8s/README.md`](./k8s/README.md) for the
+full walkthrough, including what broke on the first attempt (the app
+crash-looping without `REDIS_URL`, exactly as `NODE_ENV=production`
+requires — which is also why login rate limiting is Redis-backed now, see
+[`docs/security-hardening.md`](./docs/security-hardening.md)) and how it
+was fixed.
+
 ## CI
 
 [`.github/workflows/ci.yml`](./.github/workflows/ci.yml) runs on every push
-and pull request to `main`, as three jobs:
+and pull request to `main`, as five jobs:
 
 | Job | Runs |
 |---|---|
+| `secrets-scan` | [gitleaks](https://github.com/gitleaks/gitleaks) scans the full git history (not just the working tree) for committed secrets |
 | `quality` | Install → ESLint → Prettier check → typecheck → unit tests → build → `npm audit` → outdated-dependency check |
-| `integration` | Migrate + seed a real MySQL service container → integration tests → build → start the server → e2e tests → API/collection tests |
+| `integration` | Migrate + seed a real MySQL service container → integration tests → build → start the server → e2e tests → API/collection tests → k6 smoke test (`SMOKE_TEST=true`) |
+| `k8s-lint` | [kubeconform](https://github.com/yannh/kubeconform) validates every manifest in `k8s/` against the Kubernetes 1.32 schema — no cluster needed |
 | `docker` | Build the app image → `docker compose up` (app + MySQL) → migrate + seed against the containerized DB → e2e tests → API/collection tests, all against the running containers |
+
+[`.github/dependabot.yml`](./.github/dependabot.yml) runs separately from
+this workflow — weekly PRs for npm, Docker base image, and GitHub Actions
+updates.
 
 Any job failing fails the whole workflow. `quality` must pass before `docker`
 starts, so a broken build or lint error fails fast without spending time on

@@ -24,6 +24,16 @@ class can only batch one key shape at a time. `CommentSQLDataSource` only
 ever needs "comments by `post_id`", so it uses the inherited one directly by
 overriding `batchLoaderCallback`.
 
+## Two connections, not one
+
+`SQLDatasource` actually holds two `Knex` connections — `db` (write) and
+`readDb` (read), the second defaulting to the first. List queries and the
+DataLoader batch functions above use `readDb`; everything else (writes, and
+point reads by id that follow a write) stays on `db`. This has no effect
+until `DATABASE_REPLICA_HOST` is set — see
+[`database-scaling.md`](./database-scaling.md) for which methods route
+where, and why.
+
 ## Why this avoids N+1 queries
 
 Every field resolver that loads a *related* entity (`Post.user`,

@@ -16,6 +16,13 @@ import type { Context } from './graphql/context/types';
 import { resolvers, typeDefs } from './graphql/schema';
 import { startCommentConsumer, stopCommentConsumer } from './kafka/consumer';
 import { disconnectProducer } from './kafka/producer';
+import { knex } from './knex';
+import { disconnectRedisClient } from './redis';
+import { shutdownTracing } from './observability/tracing';
+import { metricsPlugin } from './observability/apollo-plugin';
+import { httpMetricsMiddleware, metricsHandler } from './observability/metrics';
+import { livenessHandler, makeReadinessHandler } from './observability/health';
+import { complexityLimitPlugin } from './graphql/complexity-limit';
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET || JWT_SECRET.length < 32) {
@@ -44,9 +51,19 @@ const serverCleanup = useServer(
 const server = new ApolloServer<Context>({
   schema,
   introspection: process.env.NODE_ENV !== 'production',
+  // Explicit, not just relying on the default: login sets its cookie with
+  // sameSite: 'none' (see graphql/schema/login/datasources.ts), so this is
+  // the thing standing between that cookie and a cross-site request forgery
+  // using a "simple" request (text/plain or form-urlencoded body) that
+  // skips the CORS preflight our origin allowlist would otherwise catch.
+  // Verified directly: both are rejected with a CSRF error — see
+  // docs/security-hardening.md.
+  csrfPrevention: true,
   validationRules: [depthLimit(7)],
   plugins: [
     ApolloServerPluginDrainHttpServer({ httpServer }),
+    metricsPlugin,
+    complexityLimitPlugin,
     {
       async serverWillStart() {
         return {
@@ -54,6 +71,8 @@ const server = new ApolloServer<Context>({
             await serverCleanup.dispose();
             await stopCommentConsumer();
             await disconnectProducer();
+            await shutdownTracing();
+            await disconnectRedisClient();
           },
         };
       },
@@ -64,6 +83,11 @@ const server = new ApolloServer<Context>({
 const start = async (): Promise<void> => {
   await server.start();
   await startCommentConsumer();
+
+  app.use(httpMetricsMiddleware);
+  app.get('/health', livenessHandler);
+  app.get('/ready', makeReadinessHandler(knex));
+  app.get('/metrics', metricsHandler);
 
   app.use(
     '/',

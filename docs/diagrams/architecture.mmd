@@ -5,9 +5,10 @@ flowchart TB
     end
 
     subgraph App["Express App — src/index.ts"]
-        MW["CORS · cookie-parser · json · depthLimit(7)"]
-        HTTPServer["ApolloServer<br/>(expressMiddleware)"]
+        MW["CORS · cookie-parser · json<br/>httpMetricsMiddleware"]
+        HTTPServer["ApolloServer<br/>depthLimit(7) · complexityLimit(1000)<br/>csrfPrevention · expressMiddleware"]
         WSServer["graphql-ws<br/>(useServer)"]
+        Ops["/health · /ready · /metrics"]
     end
 
     Context["context()<br/>src/graphql/context<br/>JWT / cookie verification"]
@@ -20,15 +21,21 @@ flowchart TB
         LoginApi["LoginApi"]
     end
 
-    Knex["Knex Query Builder"]
-    MySQL[("MySQL 8<br/>users · posts · comments")]
+    subgraph MySQLGroup["MySQL — src/knex"]
+        Primary[("primary<br/>writes + point reads")]
+        Replica[("replica (optional)<br/>DATABASE_REPLICA_HOST")]
+    end
+
     PubSub["PubSub<br/>Redis (prod) / in-memory (dev)"]
+    RedisClient[("Redis client — src/redis.ts<br/>login rate limiting")]
 
     subgraph Kafka["Kafka event backbone (optional) — src/kafka"]
         Producer["Producer<br/>publishCommentCreated()"]
         Topic[/"topic: comment.created"/]
         Consumer["Consumer group<br/>graphql-node-subscriptions"]
     end
+
+    Otel["OpenTelemetry (opt-in)<br/>→ OTLP collector"]
 
     HTTPClient -->|"POST / (HTTP)"| MW --> HTTPServer
     WSClient -->|"ws:// (Upgrade)"| WSServer
@@ -38,10 +45,15 @@ flowchart TB
     Context --> Resolvers
 
     Resolvers --> UserDS & PostDS & CommentDS & LoginApi
-    UserDS & PostDS & CommentDS & LoginApi --> Knex --> MySQL
+    UserDS & PostDS & CommentDS --> Primary
+    UserDS & PostDS & CommentDS -.->|"list / DataLoader batch reads"| Replica
+    LoginApi --> Primary
+    LoginApi -.->|"INCR / PEXPIRE / DEL<br/>login-attempts:userName"| RedisClient
 
     CommentDS -->|"KAFKA_BROKERS set"| Producer --> Topic --> Consumer
     CommentDS -.->|"KAFKA_BROKERS unset<br/>(dev fallback)"| PubSub
     Consumer -->|"publish(CREATED_COMMENT)"| PubSub
     Resolvers <-->|"asyncIterableIterator"| PubSub
     PubSub -.->|"notifies matching<br/>subscribers"| WSServer
+
+    App -.->|"OTEL_EXPORTER_OTLP_ENDPOINT set"| Otel
