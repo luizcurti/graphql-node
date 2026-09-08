@@ -130,6 +130,31 @@ fingerprints with the reasoning inline, and a third entry allowlists a
 similarly-inert example JWT in `queries/query_with_authentication_0001.gql`
 (a sample request-headers comment, not a live credential).
 
+## Kafka consumer startup no longer crashes the whole server
+
+**The gap:** starting the app against a genuinely fresh Kafka broker (not
+one that had already been running) crashed the whole process, 100% of the
+time — `consumer.subscribe()` threw `UNKNOWN_TOPIC_OR_PARTITION` because
+`comment.created` isn't created yet the instant the broker starts, and
+nothing caught it. This took down request-serving entirely (the crash
+happened before `app.listen()`), not just the Kafka feature that actually
+failed. `restart: always` masked it as a silent extra container restart on
+every cold deploy instead of a startup failure anyone would notice.
+
+**The fix:** [`kafka/consumer.ts`](../src/kafka/consumer.ts) retries
+`subscribe()` with backoff (500ms–8s, 5 attempts) and wraps consumer startup
+in a try/catch that logs instead of throwing — consistent with Kafka being
+documented as optional everywhere else in this codebase; a consumer that
+can't attach shouldn't take the GraphQL API down with it.
+
+**Verified against a real, cold broker, not just mocked:** `docker compose
+--profile kafka up -d --build` from a clean state reproduced the crash
+(`RestartCount: 1` via `docker inspect`) before the fix and `RestartCount: 0`
+after, with the retry warning logged and the topic becoming available a
+moment later. See [`subscriptions-flow.md`](./subscriptions-flow.md#the-consumer-retries-a-cold-broker-instead-of-crashing-the-server)
+for the full account, and `kafka-consumer.test.ts` for the regression tests
+(retry-then-succeed, and retry-exhausted-without-crashing).
+
 ## Dependency updates (Dependabot)
 
 [`.github/dependabot.yml`](../.github/dependabot.yml) covers all three

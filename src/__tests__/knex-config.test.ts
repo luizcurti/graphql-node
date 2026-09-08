@@ -43,6 +43,50 @@ describe('knexfile', () => {
     const config = require('../knex/knexfile').default;
     expect(config.development.client).toBe('mysql2');
   });
+
+  it('wires setUtcSessionTimezone as pool.afterCreate on every environment', () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const knexfileModule = require('../knex/knexfile');
+    expect(knexfileModule.default.development.pool.afterCreate).toBe(
+      knexfileModule.setUtcSessionTimezone,
+    );
+    expect(knexfileModule.default.production.pool.afterCreate).toBe(
+      knexfileModule.setUtcSessionTimezone,
+    );
+  });
+
+  it('setUtcSessionTimezone forces the session to UTC on every new pooled connection', () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { setUtcSessionTimezone } = require('../knex/knexfile');
+    const conn = {
+      query: jest.fn((_sql: string, cb: (err: null) => void) => cb(null)),
+    };
+    const done = jest.fn();
+
+    setUtcSessionTimezone(conn, done);
+
+    expect(conn.query).toHaveBeenCalledWith(
+      'SET time_zone = "+00:00"',
+      expect.any(Function),
+    );
+    expect(done).toHaveBeenCalledWith(null, conn);
+  });
+
+  it('setUtcSessionTimezone propagates a query error to done()', () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { setUtcSessionTimezone } = require('../knex/knexfile');
+    const queryError = new Error('connection reset');
+    const conn = {
+      query: jest.fn((_sql: string, cb: (err: Error) => void) =>
+        cb(queryError),
+      ),
+    };
+    const done = jest.fn();
+
+    setUtcSessionTimezone(conn, done);
+
+    expect(done).toHaveBeenCalledWith(queryError, conn);
+  });
 });
 
 describe('knex/index', () => {

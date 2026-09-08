@@ -113,4 +113,49 @@ describe('kafka consumer', () => {
       status: 'error',
     });
   });
+
+  it('retries subscribe() when the topic is not yet available, then succeeds', async () => {
+    jest.useFakeTimers();
+    const { consumer, getEachMessage } = makeConsumer();
+    consumer.subscribe
+      .mockRejectedValueOnce(new Error('UNKNOWN_TOPIC_OR_PARTITION'))
+      .mockRejectedValueOnce(new Error('UNKNOWN_TOPIC_OR_PARTITION'))
+      .mockResolvedValueOnce(undefined);
+    jest.doMock('../kafka/client', () => ({
+      getKafka: () => ({ consumer: () => consumer }),
+    }));
+
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { startCommentConsumer } = require('../kafka/consumer');
+    const startPromise = startCommentConsumer();
+
+    await jest.runAllTimersAsync();
+    await startPromise;
+
+    expect(consumer.subscribe).toHaveBeenCalledTimes(3);
+    expect(consumer.run).toHaveBeenCalled();
+    expect(typeof getEachMessage()).toBe('function');
+
+    jest.useRealTimers();
+  });
+
+  it('logs and does not throw when subscribe() keeps failing — the server must still start', async () => {
+    jest.useFakeTimers();
+    const { consumer } = makeConsumer();
+    consumer.subscribe.mockRejectedValue(new Error('still unavailable'));
+    jest.doMock('../kafka/client', () => ({
+      getKafka: () => ({ consumer: () => consumer }),
+    }));
+
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { startCommentConsumer } = require('../kafka/consumer');
+    const startPromise = startCommentConsumer();
+
+    await jest.runAllTimersAsync();
+
+    await expect(startPromise).resolves.toBeUndefined();
+    expect(consumer.run).not.toHaveBeenCalled();
+
+    jest.useRealTimers();
+  });
 });

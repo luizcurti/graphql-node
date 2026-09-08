@@ -65,3 +65,30 @@ Run a local broker with `docker compose --profile kafka up -d kafka` and set
 [`kafka-producer.test.ts`](../src/__tests__/kafka-producer.test.ts) and
 [`kafka-consumer.test.ts`](../src/__tests__/kafka-consumer.test.ts) for both
 branches under test.
+
+### The consumer retries a cold broker instead of crashing the server
+
+Found by actually starting the app against a **freshly created** Kafka
+container (`docker compose --profile kafka up -d --build`, no prior state) —
+not just against one that had been running a while. `consumer.subscribe()`
+threw `KafkaJSProtocolError: This server does not host this topic-partition`
+(`UNKNOWN_TOPIC_OR_PARTITION`) because `comment.created` doesn't exist as a
+topic yet the instant the broker comes up, and unlike most KafkaJS request
+paths, `subscribe()` doesn't retry that specific error itself even though
+KafkaJS marks it `retriable: true`. The error was unhandled, so it crashed
+the whole process — on every cold start, 100% reproducible, not a flake —
+before `app.listen()` ever ran, taking down GraphQL/health/ready along with
+the Kafka feature that actually failed. `restart: always` in
+[`docker-compose.yml`](../docker-compose.yml) (and Kubernetes' default pod
+restart policy) silently masked this as one extra restart rather than a
+startup failure worth noticing.
+
+The fix in [`kafka/consumer.ts`](../src/kafka/consumer.ts):
+`subscribeWithRetry()` retries `subscribe()` up to 5 times with backoff
+(500ms–8s) before giving up, and the whole connect/subscribe/run sequence is
+wrapped in a try/catch that logs rather than throws — Kafka is documented as
+optional here, so a consumer that can't attach shouldn't take the rest of
+the API down with it. Verified against the same cold-broker scenario after
+the fix: the app now reaches `Up ... (healthy)` with **zero** container
+restarts, logging one `Kafka subscribe failed, retrying in 500ms` warning
+before the topic became available a moment later.

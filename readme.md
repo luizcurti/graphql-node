@@ -1,5 +1,7 @@
 # GraphQL Node API
 
+![coverage](https://img.shields.io/badge/coverage-100%25-brightgreen) ![unit tests](https://img.shields.io/badge/unit%20tests-213%20passing-brightgreen) ![e2e](https://img.shields.io/badge/e2e-30%20checks-brightgreen)
+
 Live GraphQL subscriptions over Redis PubSub — with an optional Kafka event backbone in front of it — DataLoader batching to kill N+1 queries, and query depth/complexity limits to reject abusive queries before they run — a GraphQL API built with Apollo Server, Knex, and MySQL, with JWT auth via httpOnly cookies.
 
 📊 **[Architecture diagrams and flow docs →](./docs/README.md)**
@@ -262,12 +264,14 @@ npm run test:api          # Postman collection (via newman) against a live serve
 
 ### Unit tests (`npm test`)
 
-208 tests across 24 suites, with **100% statement/branch/function/line
-coverage** on every business-logic module (resolvers, datasources, auth
-context, pubsub, kafka, observability, validators — see `npm test -- --coverage`).
-Entry-point bootstrap (`src/index.ts`) and migrations/seeds are intentionally
-excluded from that figure — they're covered by the integration suite
-instead, which exercises them against a real database rather than mocks.
+213 tests across 24 suites, with **100% statement/branch/function/line
+coverage** across every module Jest collects coverage for (resolvers,
+datasources, auth context, pubsub, kafka, knex config, observability,
+validators — see `npm test -- --coverage`). Entry-point bootstrap
+(`src/index.ts`) and migrations/seeds aren't imported by any unit test, so
+Jest's default coverage collection never touches them — they're covered by
+the integration suite instead, which exercises them against a real database
+rather than mocks.
 
 - `login-functions` — `checkIsLoggedIn`, `checkOwner`
 - `user-validators` — `validateUserName`, `validateUserPassword`
@@ -410,10 +414,16 @@ docker compose --profile kafka up -d kafka
 ```
 
 Then set `KAFKA_BROKERS` in `.env` — `localhost:9092` if the app runs on the
-host (`npm run dev`), or `kafka:19092` if the app also runs in Compose.
+host (`npm run dev`), or `kafka:19092` if the app also runs in Compose. Don't
+mix the two in one shared `.env`: a host-run script (`npm run test:integration`,
+`npm run dev`) and the containerized app need different hostnames for the
+same broker, since only one of them is inside the Compose network.
 Without `KAFKA_BROKERS`, `createComment` publishes straight onto PubSub, so
 subscriptions work identically either way — see
 [`docs/subscriptions-flow.md`](./docs/subscriptions-flow.md#kafka-as-an-optional-event-backbone).
+The consumer retries a topic that isn't available yet on a freshly started
+broker instead of crashing the server — see
+[`docs/security-hardening.md`](./docs/security-hardening.md#kafka-consumer-startup-no-longer-crashes-the-whole-server).
 
 ### Observability
 
