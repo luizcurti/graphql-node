@@ -1,0 +1,48 @@
+# Non-secret configuration. Credentials live in secret.example.yaml instead
+# (see k8s/README.md) — never put DATABASE_USER/PASSWORD/JWT_SECRET here.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: graphql-node-config
+  namespace: graphql-node
+data:
+  NODE_ENV: 'production'
+  PORT: '4003'
+  ALLOWED_ORIGINS: 'https://example.com'
+  DATABASE_CLIENT: 'mysql2'
+  DATABASE_HOST: 'mysql'
+  DATABASE_PORT: '3306'
+  DATABASE_NAME: 'graphql_mysql'
+  DATABASE_POOL_MIN: '2'
+  DATABASE_POOL_MAX: '10'
+  LOG_LEVEL: 'info'
+  # Required in production — see src/graphql/pubsub.ts. Provisioned by
+  # redis.yaml.
+  REDIS_URL: 'redis://redis:6379'
+  # Read replica — provisioned by mysql-replica.yaml. List/browse queries
+  # and DataLoader batch reads route here instead of the primary; see
+  # src/knex/index.ts. Comment this out if you haven't applied
+  # mysql-replica.yaml — the app falls back to the primary connection for
+  # everything when it's unset, same as any other environment.
+  DATABASE_REPLICA_HOST: 'mysql-replica'
+  # Event backbone for comment.created — provisioned by kafka.yaml. The app
+  # degrades to direct PubSub publishing on its own if this is ever
+  # unreachable (see src/kafka), so it's safe to comment out on a manifest
+  # set that hasn't applied kafka.yaml.
+  # Port 19092 (not 9092): 9092 is the PLAINTEXT_HOST listener, which
+  # advertises itself back as localhost:9092 (see kafka.yaml) — fine for a
+  # host process connecting to a published Compose port, wrong for one pod
+  # reaching another, where "localhost" resolves to itself. 19092 is the
+  # PLAINTEXT listener, advertised as kafka:19092 — a name every pod in the
+  # namespace can actually resolve back to the broker. Verified directly:
+  # 9092 here left producer/consumer stuck after the initial metadata
+  # fetch, silently never delivering anything.
+  KAFKA_BROKERS: 'kafka:19092'
+  # Everything below is optional — same env vars as docker-compose/.env.example.
+  # Uncomment and point at real services to enable; omitted here so a fresh
+  # deploy doesn't depend on infrastructure this manifest set doesn't provision.
+  # OTEL_EXPORTER_OTLP_ENDPOINT: 'http://otel-collector:4318'
+  # RATE_LIMIT_MAX: '300'
+  # RATE_LIMIT_WINDOW_MS: '60000'
+  # METRICS_TOKEN belongs in secret.example.yaml instead — it's a secret,
+  # not config.

@@ -1,0 +1,27 @@
+version: 2
+updates:
+  - package-ecosystem: 'npm'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+    groups:
+      # @opentelemetry/* and @apollo/* both ship many small packages that
+      # must stay in lockstep — bundling their updates avoids a burst of
+      # single-package PRs that individually fail typecheck/peer-dep checks.
+      opentelemetry:
+        patterns:
+          - '@opentelemetry/*'
+      apollo:
+        patterns:
+          - '@apollo/*'
+    open-pull-requests-limit: 10
+
+  - package-ecosystem: 'docker'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+
+  - package-ecosystem: 'github-actions'
+    directory: '/'
+    schedule:
+      interval: 'weekly'

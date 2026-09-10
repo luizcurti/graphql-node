@@ -1,0 +1,62 @@
+flowchart TB
+    subgraph Clients["Clients"]
+        HTTPClient["GraphQL Client / Postman<br/>(queries &amp; mutations)"]
+        WSClient["WebSocket Client<br/>(subscriptions)"]
+    end
+
+    subgraph App["Express App — src/index.ts"]
+        MW["helmet · CORS · rate limiter (optional)<br/>cookie-parser · json · httpMetricsMiddleware"]
+        HTTPServer["ApolloServer<br/>depthLimit · complexityLimit (env-configurable)<br/>csrfPrevention · formatError · expressMiddleware"]
+        WSServer["graphql-ws<br/>(useServer)"]
+        Ops["/health · /ready · /metrics (optional METRICS_TOKEN)"]
+    end
+
+    Context["context()<br/>src/graphql/context<br/>JWT / cookie verification"]
+    Resolvers["Resolvers<br/>src/graphql/schema/*"]
+
+    subgraph DataSources["DataSources"]
+        UserDS["UserSQLDataSource"]
+        PostDS["PostSQLDataSource"]
+        CommentDS["CommentSQLDataSource"]
+        LoginApi["LoginApi"]
+    end
+
+    subgraph MySQLGroup["MySQL — src/knex"]
+        Primary[("primary<br/>writes + point reads")]
+        Replica[("replica (optional)<br/>DATABASE_REPLICA_HOST")]
+    end
+
+    PubSub["PubSub<br/>Redis (prod) / in-memory (dev)"]
+    RedisClient[("Redis client — src/redis.ts<br/>login rate limiting + JWT cache")]
+
+    subgraph Kafka["Kafka event backbone — src/kafka"]
+        Producer["Producer<br/>publishCommentCreated()"]
+        Topic[/"topic: comment.created"/]
+        Consumer["Consumer group<br/>graphql-node-subscriptions"]
+        DLQ[/"topic: comment.created.dlq"/]
+    end
+
+    Otel["OpenTelemetry (opt-in)<br/>→ OTLP collector"]
+
+    HTTPClient -->|"POST / (HTTP)"| MW --> HTTPServer
+    WSClient -->|"ws:// (Upgrade)"| WSServer
+
+    HTTPServer --> Context
+    WSServer --> Context
+    Context --> Resolvers
+
+    Resolvers --> UserDS & PostDS & CommentDS & LoginApi
+    UserDS & PostDS & CommentDS --> Primary
+    UserDS & PostDS & CommentDS -.->|"list / DataLoader batch reads"| Replica
+    LoginApi --> Primary
+    LoginApi -.->|"INCR / PEXPIRE / DEL<br/>login-attempts:userName"| RedisClient
+    Context -.->|"GET / SET / DEL<br/>jwt-cache:hash(token)"| RedisClient
+
+    CommentDS -->|"KAFKA_BROKERS set"| Producer --> Topic --> Consumer
+    CommentDS -.->|"KAFKA_BROKERS unset<br/>(dev fallback)"| PubSub
+    Consumer -->|"publish(CREATED_COMMENT)"| PubSub
+    Consumer -.->|"malformed message"| DLQ
+    Resolvers <-->|"asyncIterableIterator"| PubSub
+    PubSub -.->|"notifies matching<br/>subscribers"| WSServer
+
+    App -.->|"OTEL_EXPORTER_OTLP_ENDPOINT set"| Otel

@@ -1,0 +1,49 @@
+# REDIS_URL is required in production (see src/graphql/pubsub.ts) — this
+# cluster needs a real Redis for the app to start at all with
+# NODE_ENV=production. Also backs login rate limiting (src/redis.ts) —
+# with 2 replicas below, a per-pod in-memory counter would let a
+# brute-force client get 2x the intended attempt budget. No PVC: both uses
+# are fine losing state on restart (in-flight subscription messages; a
+# reset rate-limit counter).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: graphql-node
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          ports:
+            - containerPort: 6379
+          readinessProbe:
+            exec:
+              command: ['redis-cli', 'ping']
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command: ['redis-cli', 'ping']
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: graphql-node
+spec:
+  selector:
+    app: redis
+  ports:
+    - port: 6379
+      targetPort: 6379

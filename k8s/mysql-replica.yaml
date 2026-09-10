@@ -1,0 +1,157 @@
+# Read replica for mysql.yaml's primary — see src/knex/index.ts for how
+# the app splits traffic: point DATABASE_REPLICA_HOST at the Service below
+# (already done in configmap.yaml) and list/browse queries plus DataLoader
+# batch reads route here instead of the primary. Optional: the app runs
+# fine without this applied, same as DATABASE_REPLICA_HOST being unset in
+# any other environment (docker-compose, local dev).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-replica-data
+  namespace: graphql-node
+spec:
+  accessModes: ['ReadWriteOnce']
+  resources:
+    requests:
+      storage: 2Gi
+---
+# Runs once, only when this pod's data directory is empty — points this
+# server at the primary's binlog by GTID and starts applying it.
+# SOURCE_AUTO_POSITION means it replays everything from GTID zero, which is
+# only correct because this is a from-scratch replica starting alongside
+# (or after) a primary whose binlog hasn't been purged. A replica added to
+# an already-running, already-purged primary would need a data snapshot
+# first — out of scope for this demo setup.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mysql-replica-init
+  namespace: graphql-node
+data:
+  # No `set -euo pipefail` — see the matching comment in mysql.yaml's init
+  # ConfigMap; this script is sourced into the entrypoint's own shell, not
+  # run as a subprocess.
+  01-start-replication.sh: |
+    #!/bin/bash
+    mysql -uroot -p"${MYSQL_ROOT_PASSWORD}" <<-EOSQL
+      CHANGE REPLICATION SOURCE TO
+        SOURCE_HOST='mysql',
+        SOURCE_PORT=3306,
+        SOURCE_USER='repl',
+        SOURCE_PASSWORD='${MYSQL_REPL_PASSWORD}',
+        SOURCE_AUTO_POSITION=1;
+      START REPLICA;
+      -- Applied *after* replication is configured, not as a --read-only
+      -- startup flag: super_read_only blocks CHANGE REPLICATION SOURCE
+      -- itself (verified directly — the init script failed with "running
+      -- with the --super-read-only option"). SET PERSIST (not SET GLOBAL)
+      -- so this survives a pod restart, since docker-entrypoint-initdb.d
+      -- scripts only ever run once, on first init.
+      SET PERSIST read_only = ON;
+      SET PERSIST super_read_only = ON;
+    EOSQL
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql-replica
+  namespace: graphql-node
+spec:
+  replicas: 1
+  strategy:
+    # Same reasoning as mysql.yaml: one ReadWriteOnce PVC, one pod at a time.
+    type: Recreate
+  selector:
+    matchLabels:
+      app: mysql-replica
+  template:
+    metadata:
+      labels:
+        app: mysql-replica
+    spec:
+      # The init script below only runs once, at first start — if the
+      # primary isn't reachable yet at that exact moment, replication never
+      # gets configured (there's no retry). This blocks the main container
+      # from starting until the primary is actually accepting connections.
+      initContainers:
+        - name: wait-for-primary
+          image: mysql:8.0
+          command:
+            - sh
+            - -c
+            - |
+              until mysqladmin ping -h mysql -P 3306 --silent; do
+                echo "waiting for primary (mysql:3306)..."
+                sleep 3
+              done
+      containers:
+        - name: mysql-replica
+          image: mysql:8.0
+          args:
+            - --character-set-server=utf8mb4
+            - --collation-server=utf8mb4_unicode_ci
+            - --server-id=2
+            - --log-bin=mysql-bin
+            - --gtid-mode=ON
+            - --enforce-gtid-consistency=ON
+            - --binlog-format=ROW
+            # read_only/super_read_only are set via SQL in the init script
+            # below instead of here — passing them as startup args also
+            # applies them to docker-entrypoint.sh's own temporary
+            # bootstrap server, which then can't run CHANGE REPLICATION
+            # SOURCE itself. Belt-and-suspenders once set: the app only
+            # ever sends this connection reads (see src/knex/index.ts), but
+            # a stray write landing here directly would otherwise silently
+            # desync it from the primary.
+          ports:
+            - containerPort: 3306
+          env:
+            # Deliberately no MYSQL_DATABASE/MYSQL_USER/MYSQL_PASSWORD here:
+            # those get created on the primary and arrive over replication.
+            # Setting them again here would have this container create them
+            # locally too, racing the replicated copy.
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: graphql-node-secrets
+                  key: MYSQL_ROOT_PASSWORD
+            - name: MYSQL_REPL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: graphql-node-secrets
+                  key: MYSQL_REPL_PASSWORD
+          volumeMounts:
+            - name: mysql-replica-data
+              mountPath: /var/lib/mysql
+            - name: mysql-replica-init
+              mountPath: /docker-entrypoint-initdb.d
+          readinessProbe:
+            exec:
+              command: ['sh', '-c', 'mysqladmin ping -h localhost -uroot -p"$MYSQL_ROOT_PASSWORD"']
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 10
+          livenessProbe:
+            exec:
+              command: ['sh', '-c', 'mysqladmin ping -h localhost -uroot -p"$MYSQL_ROOT_PASSWORD"']
+            initialDelaySeconds: 30
+            periodSeconds: 10
+      volumes:
+        - name: mysql-replica-data
+          persistentVolumeClaim:
+            claimName: mysql-replica-data
+        - name: mysql-replica-init
+          configMap:
+            name: mysql-replica-init
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-replica
+  namespace: graphql-node
+spec:
+  selector:
+    app: mysql-replica
+  ports:
+    - port: 3306
+      targetPort: 3306

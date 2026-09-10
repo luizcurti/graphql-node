@@ -1,0 +1,74 @@
+sequenceDiagram
+    autonumber
+    participant C as Client
+    participant S as Apollo Server
+    participant Ctx as context()
+    participant LA as LoginApi
+    participant R as Redis<br/>(rate limit + JWT cache)
+    participant UDB as UserSQLDataSource
+    participant DB as MySQL
+
+    Note over C,DB: 1) Login
+    C->>S: mutation login(userName, password)
+    S->>Ctx: context({ req, res })
+    Ctx-->>S: { loggedUserId: empty, dataSources }
+    S->>LA: login(userName, password)
+    LA->>R: INCR + PEXPIRE login-attempts:userName<br/>(REDIS_URL set — shared across instances)
+    Note right of R: REDIS_URL unset → in-memory Map instead<br/>(dev/test only, see security-hardening.md)
+    alt 6th attempt within 15 min
+        LA-->>C: UserInputError "Too many login attempts"
+    end
+    LA->>UDB: getUserByUserName(userName)
+    UDB->>DB: SELECT * FROM users WHERE user_name = ?
+    DB-->>UDB: row or null
+    Note right of LA: bcrypt.compare() always runs — against the real hash,<br/>or a fixed dummy hash if the user doesn't exist — so a<br/>nonexistent user and a wrong password are indistinguishable<br/>by response message or timing (no enumeration).
+    LA->>LA: bcrypt.compare(password, row?.passwordHash ?? DUMMY_HASH)
+    alt user not found OR password invalid
+        LA-->>C: AuthenticationError "Invalid username or password."
+    end
+    LA->>R: DEL login-attempts:userName
+    LA->>LA: createJwtToken({ userId }) — 7d expiry
+    LA->>UDB: setToken(userId, token)
+    UDB->>DB: UPDATE users SET token = ? WHERE id = ?
+    opt a previous token existed (re-login)
+        LA->>R: DEL jwt-cache:hash(previousToken)
+        Note right of R: without this, the *old* token would still<br/>resolve via cache for up to its TTL even<br/>though the DB now holds the new one
+    end
+    LA-->>C: Set-Cookie jwtToken (httpOnly, secure, sameSite=none)<br/>{ userId, token }
+
+    Note over C,DB: 2) Any subsequent authenticated request
+    C->>S: query/mutation [Cookie: jwtToken=...]
+    S->>Ctx: context({ req, res })
+    alt Authorization Bearer header present
+        Ctx->>Ctx: jwt.verify(token) → { userId }
+    else no bearer, cookie present
+        Ctx->>Ctx: parse Cookie header → jwtToken
+        Ctx->>Ctx: jwt.verify(jwtToken) → { userId }
+    end
+    Ctx->>R: GET jwt-cache:hash(token)
+    alt cache hit (REDIS_URL set, verified before)
+        R-->>Ctx: userId
+        Note right of Ctx: DB skipped entirely
+    else cache miss
+        Ctx->>UDB: getUser(userId)
+        UDB->>DB: SELECT * FROM users WHERE id = ?
+        Ctx->>Ctx: foundUser.token === presented token?
+        alt valid
+            Ctx->>R: SET jwt-cache:hash(token) userId EX 300
+        end
+    end
+    alt token mismatch, expired, or user missing
+        Ctx-->>S: loggedUserId = empty (unauthenticated)
+    else valid
+        Ctx-->>S: loggedUserId = userId, loggedUserToken = token
+    end
+    S->>S: resolver calls checkIsLoggedIn(loggedUserId)<br/>and, for owned resources, checkOwner(resourceUserId, loggedUserId)
+    S-->>C: data, or AuthenticationError
+
+    Note over C,DB: 3) Logout — invalidates the cache immediately
+    C->>S: mutation logout(userName) [Authorization: Bearer token]
+    S->>LA: logout(userName)
+    LA->>UDB: clearToken(userId)
+    UDB->>DB: UPDATE users SET token = '' WHERE id = ?
+    LA->>R: DEL jwt-cache:hash(loggedUserToken)
+    LA-->>C: true

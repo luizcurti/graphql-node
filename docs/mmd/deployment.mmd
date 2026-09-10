@@ -1,0 +1,41 @@
+flowchart TB
+    Dev["Developer / CI runner"]
+
+    subgraph Compose["docker-compose.yml"]
+        subgraph AppContainer["graphql_app<br/>(Dockerfile, node:24-alpine)"]
+            App["Express + Apollo Server<br/>dist/index.js<br/>healthcheck: GET /ready"]
+        end
+
+        subgraph DBContainer["graphql_mysql<br/>(mysql:8.0)"]
+            MySQL[("MySQL 8<br/>volume: mysql_data")]
+        end
+
+        subgraph KafkaContainer["graphql_kafka<br/>(apache/kafka)"]
+            Kafka[("Kafka broker<br/>topic: comment.created")]
+        end
+
+        subgraph RedisContainer["graphql_redis<br/>(redis:7-alpine)"]
+            Redis[("Redis<br/>optional in dev — opt in via REDIS_URL")]
+        end
+
+        subgraph JaegerContainer["graphql_jaeger<br/>(jaegertracing/all-in-one, profile: observability)"]
+            Jaeger[("Jaeger UI :16686<br/>OTLP/HTTP :4318")]
+        end
+
+        subgraph PromGrafana["prometheus + grafana<br/>(profile: observability)"]
+            Prometheus[("Prometheus :9090<br/>scrapes app /metrics")]
+            Grafana["Grafana :3000<br/>pre-provisioned dashboard"]
+        end
+    end
+
+    Dev -->|"docker compose up -d --build<br/>(MySQL + Redis + Kafka)"| Compose
+    Dev -->|"docker compose --profile observability up -d<br/>jaeger prometheus grafana (optional)"| JaegerContainer
+    Dev -->|"npm run db:setup<br/>(migrate + seed)"| MySQL
+    Dev -->|"HTTP :4003 / ws"| App
+
+    App -->|"knex (mysql2)"| MySQL
+    App -.->|"REQUIRED in production<br/>PubSub, login rate limiting, JWT cache"| Redis
+    App -.->|"KAFKA_BROKERS<br/>event backbone for comment.created"| Kafka
+    App -.->|"OPTIONAL — OTEL_EXPORTER_OTLP_ENDPOINT"| Jaeger
+    Prometheus -->|"scrape /metrics"| App
+    Grafana -->|"query"| Prometheus

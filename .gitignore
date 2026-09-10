@@ -1,0 +1,8 @@
+node_modules
+.DS_Store
+dist
+coverage
+.env
+bcrypt-jwt.js
+k8s/secret.yaml
+k8s/*.local.yaml

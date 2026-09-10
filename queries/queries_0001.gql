@@ -1,0 +1,13 @@
+query GET_USER {
+  user(id: "602") {
+    id
+    userName
+  }
+}
+
+query GET_USERS {
+  users {
+    id
+    userName
+  }
+}

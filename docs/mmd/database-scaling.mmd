@@ -1,0 +1,18 @@
+flowchart TB
+    Resolvers["Resolvers<br/>src/graphql/schema/*"]
+
+    subgraph DS["*SQLDataSource (extends SQLDatasource)"]
+        WritePath["Writes, and point reads that follow a write:<br/>getUser(id) · getPost(id) · getById<br/>create / update / delete / setToken"]
+        ReadPath["Pure list &amp; DataLoader batch reads:<br/>getUsers() · getPosts() · getByPostId()<br/>batchLoadById · batchLoadByUserId · batchLoaderCallback"]
+    end
+
+    Primary[("MySQL — primary<br/>DATABASE_HOST")]
+    Replica[("MySQL — read replica<br/>DATABASE_REPLICA_HOST (optional)")]
+
+    Resolvers --> WritePath & ReadPath
+    WritePath -->|"this.db"| Primary
+    ReadPath -->|"this.readDb"| Replica
+    Primary -.->|"replication (lag)"| Replica
+
+    Note["DATABASE_REPLICA_HOST unset ⇒ this.readDb === this.db<br/>(same connection, no behavior change)"]
+    ReadPath -.-> Note

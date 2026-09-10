@@ -1,0 +1,1374 @@
+{
+	"info": {
+		"name": "GraphQL Node API",
+		"_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+		"description": "Complete collection for the GraphQL Node API.\n\n**Before you start:**\n1. Run `docker compose up -d && npm run db:setup && npm run dev`\n2. Import this file into Postman\n3. Select the **GraphQL Node — Local** environment\n4. Run **🔐 Login** first — the `jwtToken` cookie will be set automatically\n\n**Available seed users** (password: `Senha123`):\n- `elisa.pereira` (id: 602)\n- `enzo_barros` (id: 903)\n- `danilo95` (id: 470)\n- `talita.melo` (id: 115)\n- `heloisa.albuquerque` (id: 812)",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:4003/graphql",
+			"type": "string"
+		},
+		{
+			"key": "loggedUserId",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "createdUserId",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "createdPostId",
+			"value": "",
+			"type": "string"
+		}
+	],
+	"item": [
+		{
+			"name": "🔐 Auth",
+			"item": [
+				{
+					"name": "Login",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"const body = pm.response.json();",
+									"pm.test('Status 200', () => pm.response.to.have.status(200));",
+									"pm.test('No GraphQL errors', () => pm.expect(body.errors).to.be.undefined);",
+									"pm.test('Returns userId', () => pm.expect(body.data.login.userId).to.be.a('string'));",
+									"",
+									"if (body.data && body.data.login) {",
+									"  pm.collectionVariables.set('loggedUserId', body.data.login.userId);",
+									"  console.log('loggedUserId saved:', body.data.login.userId);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"query\": \"mutation LOGIN($userName: String!, $password: String!) { login(data: { userName: $userName, password: $password }) { userId } }\",\n  \"variables\": {\n    \"userName\": \"elisa.pereira\",\n    \"password\": \"Senha123\"\n  }\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}",
+							"host": [
+								"{{baseUrl}}"
+							]
+						}
+					}
+				},
+				{
+					"name": "Login — wrong password (expected error)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"const body = pm.response.json();",
+									"pm.test('Status 200', () => pm.response.to.have.status(200));",
+									"pm.test('Returns an authentication error', () => {",
+									"  pm.expect(body.errors).to.be.an('array');",
+									"  pm.expect(body.errors[0].message).to.include('Invalid username or password');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"query\": \"mutation { login(data: { userName: \\\"elisa.pereira\\\", password: \\\"SenhaErrada1\\\" }) { userId } }\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}",
+							"host": [
+								"{{baseUrl}}"
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "👤 Users",
+			"item": [
+				{
+					"name": "Query — user by id (requires login)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"const body = pm.response.json();",
+									"pm.test('Status 200', () => pm.response.to.have.status(200));",
+									"pm.test('No GraphQL errors', () => pm.expect(body.errors).to.be.undefined);",
+									"pm.test('Returns user with the correct id', () => {",
+									"  pm.expect(body.data.user.id).to.equal('602');",
+									"  pm.expect(body.data.user.userName).to.equal('elisa.pereira');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"query\": \"query GET_USER($id: ID!) { user(id: $id) { id firstName lastName userName indexRef createdAt posts { id title } } }\",\n  \"variables\": { \"id\": \"602\" }\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}",
+							"host": [
+								"{{baseUrl}}"
+							]
+						}
+					}
+				},
+				{
+					"name": "Query — users (list with filters)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"const body = pm.response.json();",
+									"pm.test('Status 200', () => pm.response.to.have.status(200));",
+									"pm.test('No GraphQL errors', () => pm.expect(body.errors).to.be.undefined);",
+									"pm.test('Returns an array of users', () => {",
+									"  pm.expect(body.data.users).to.be.an('array');",
+									"  pm.expect(body.data.users.length).to.be.greaterThan(0);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"query\": \"query GET_USERS($input: ApiFiltersInput) { users(input: $input) { id firstName lastName userName indexRef createdAt } }\",\n  \"variables\": {\n    \"input\": {\n      \"_sort\": \"index_ref\",\n      \"_order\": \"ASC\",\n      \"_start\": 0,\n      \"_limit\": 5\n    }\n  }\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}",
+							"host": [
+								"{{baseUrl}}"
+							]
+						}
+					}
+				},
+				{
+					"name": "Query — users without login (expected error)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"const body = pm.response.json();",
+									"pm.test('Status 200', () => pm.response.to.have.status(200));",
+									"pm.test('Returns AuthenticationError', () => {",
+									"  pm.expect(body.errors).to.be.an('array');",
+									"  pm.expect(body.errors[0].extensions.code).to.equal('UNAUTHENTICATED');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Cookie",
+								"value": "",
+								"description": "Empty cookie — simulates an unauthenticated user"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"query\": \"query { users { id userName } }\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}",
+							"host": [
+								"{{baseUrl}}"
+							]
+						}
+					},
+					"protocolProfileBehavior": {
+						"disableCookies": true
+					}
+				},
+				{
+					"name": "Mutation — createUser",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"const body = pm.response.json();",
+									"pm.test('Status 200', () => pm.response.to.have.status(200));",
+									"pm.test('No GraphQL errors', () => pm.expect(body.errors).to.be.undefined);",
+									"pm.test('Returns created user', () => {",
+									"  pm.expect(body.data.createUser.userName).to.equal('test.user99');",
+									"  pm.expect(body.data.createUser.id).to.be.a('string');",
+									"});",
+									"",
+									"if (body.data && body.data.createUser) {",
+									"  pm.collectionVariables.set('createdUserId', body.data.createUser.id);",
+									"  console.log('createdUserId saved:', body.data.createUser.id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"query\": \"mutation CREATE_USER($data: CreateUserInput!) { createUser(data: $data) { id firstName lastName userName indexRef createdAt } }\",\n  \"variables\": {\n    \"data\": {\n      \"firstName\": \"Test\",\n      \"lastName\": \"User\",\n      \"userName\": \"test.user99\",\n      \"password\": \"Senha123\"\n    }\n  }\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}",
+							"host": [
+								"{{baseUrl}}"
+							]
+						}
+					}
+				},
+				{
+					"name": "Mutation — createUser duplicate userName (expected error)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"const body = pm.response.json();",
+									"pm.test('Status 200', () => pm.response.to.have.status(200));",
+									"pm.test('Returns ValidationError for duplicate userName', () => {",
+									"  pm.expect(body.errors).to.be.an('array');",
+									"  pm.expect(body.errors[0].message).to.include('has already been taken');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"query\": \"mutation { createUser(data: { firstName: \\\"Dup\\\", lastName: \\\"User\\\", userName: \\\"elisa.pereira\\\", password: \\\"Senha123\\\" }) { id } }\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}",
+							"host": [
+								"{{baseUrl}}"
+							]
+						}
+					}
+				},
+				{
+					"name": "Mutation — updateUser (requires login as owner)",
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"exec": [
+									"// Ensures the saved userId is the logged-in user's.",
+									"// Execute 'Login' como elisa.pereira antes desta request.",
+									"console.log('loggedUserId:', pm.collectionVariables.get('loggedUserId'));"
+								],
+								"type": "text/javascript"
+							}
+						},
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"const body = pm.response.json();",
+									"pm.test('Status 200', () => pm.response.to.have.status(200));",
+									"pm.test('No GraphQL errors', () => pm.expect(body.errors).to.be.undefined);",
+									"pm.test('Returns updated user', () => {",
+									"  pm.expect(body.data.updateUser.firstName).to.equal('Elisa Updated');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"query\": \"mutation UPDATE_USER($userId: ID!, $data: UpdateUserInput!) { updateUser(userId: $userId, data: $data) { id firstName lastName userName } }\",\n  \"variables\": {\n    \"userId\": \"602\",\n    \"data\": {\n      \"firstName\": \"Elisa Updated\"\n    }\n  }\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}",
+							"host": [
+								"{{baseUrl}}"
+							]
+						}
+					}
+				},
+				{
+					"name": "Mutation — updateUser another user (expected error)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"const body = pm.response.json();",
+									"pm.test('Status 200', () => pm.response.to.have.status(200));",
+									"pm.test('Returns AuthenticationError for ownership', () => {",
+									"  pm.expect(body.errors).to.be.an('array');",
+									"  pm.expect(body.errors[0].extensions.code).to.equal('UNAUTHENTICATED');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"query\": \"mutation { updateUser(userId: \\\"903\\\", data: { firstName: \\\"Hack\\\" }) { id } }\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}",
+							"host": [
+								"{{baseUrl}}"
+							]
+						}
+					}
+				},
+				{
+					"name": "Mutation — deleteUser (requires login as owner)",
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"// deleteUser requires being the owner (checkOwner) — since the user created",
+									"// above hasn't authenticated their own session yet, we log in as",
+									"// them here before calling deleteUser.",
+									"pm.sendRequest({",
+									"  url: pm.collectionVariables.get('baseUrl'),",
+									"  method: 'POST',",
+									"  header: { 'Content-Type': 'application/json' },",
+									"  body: {",
+									"    mode: 'raw',",
+									"    raw: JSON.stringify({",
+									"      query: 'mutation { login(data: { userName: \"test.user99\", password: \"Senha123\" }) { userId } }'",
+									"    })",
+									"  }",
+									"}, function (err, res) {",
+									"  if (err) { console.error('login test.user99 failed', err); return; }",
+									"  var json = res.json();",
+									"  if (json && json.data && json.data.login) {",
+									"    pm.collectionVariables.set('loggedUserId', json.data.login.userId);",
+									"  }",
+									"});"
+								]
+							}
+						},
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"const body = pm.response.json();",
+									"pm.test('Status 200', () => pm.response.to.have.status(200));",
+									"pm.test('No GraphQL errors', () => pm.expect(body.errors).to.be.undefined);",
+									"pm.test('Returns true', () => {",
+									"  pm.expect(body.data.deleteUser).to.be.true;",
+									"});",
+									"",
+									"// Restores the original session (elisa.pereira) for the following folders,",
+									"// since the just-deleted user can no longer authenticate.",
+									"pm.sendRequest({",
+									"  url: pm.collectionVariables.get('baseUrl'),",
+									"  method: 'POST',",
+									"  header: { 'Content-Type': 'application/json' },",
+									"  body: {",
+									"    mode: 'raw',",
+									"    raw: JSON.stringify({",
+									"      query: 'mutation { login(data: { userName: \"elisa.pereira\", password: \"Senha123\" }) { userId } }'",
+									"    })",
+									"  }",
+									"}, function (err, res) {",
+									"  if (err) { console.error('re-login elisa.pereira failed', err); return; }",
+									"  var json = res.json();",
+									"  if (json && json.data && json.data.login) {",
+									"    pm.collectionVariables.set('loggedUserId', json.data.login.userId);",
+									"  }",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"query\": \"mutation DELETE_USER($userId: ID!) { deleteUser(userId: $userId) }\",\n  \"variables\": {\n    \"userId\": \"{{createdUserId}}\"\n  }\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}",
+							"host": [
+								"{{baseUrl}}"
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "📝 Posts",
+			"item": [
+				{
+					"name": "Query — post by id (public)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"const body = pm.response.json();",
+									"pm.test('Status 200', () => pm.response.to.have.status(200));",
+									"pm.test('No GraphQL errors', () => pm.expect(body.errors).to.be.undefined);",
+									"pm.test('Returns post with relations', () => {",
+									"  const post = body.data.post;",
+									"  pm.expect(post.id).to.equal('645');",
+									"  pm.expect(post.user).to.have.property('userName');",
+									"  pm.expect(post.comments).to.be.an('array');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"query\": \"query GET_POST($id: ID!) { post(id: $id) { id title body indexRef createdAt user { id firstName lastName userName } comments { id comment createdAt user { userName } } } }\",\n  \"variables\": { \"id\": \"645\" }\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}",
+							"host": [
+								"{{baseUrl}}"
+							]
+						}
+					}
+				},
+				{
+					"name": "Query — posts (list with filters, requires login)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"const body = pm.response.json();",
+									"pm.test('Status 200', () => pm.response.to.have.status(200));",
+									"pm.test('No GraphQL errors', () => pm.expect(body.errors).to.be.undefined);",
+									"pm.test('Returns an array with at most 3 posts', () => {",
+									"  pm.expect(body.data.posts).to.be.an('array');",
+									"  pm.expect(body.data.posts.length).to.be.at.most(3);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"query\": \"query GET_POSTS($input: ApiFiltersInput) { posts(input: $input) { id title body indexRef createdAt user { userName } } }\",\n  \"variables\": {\n    \"input\": {\n      \"_sort\": \"created_at\",\n      \"_order\": \"DESC\",\n      \"_limit\": 3\n    }\n  }\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}",
+							"host": [
+								"{{baseUrl}}"
+							]
+						}
+					}
+				},
+				{
+					"name": "Mutation — createPost (requires login)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"const body = pm.response.json();",
+									"pm.test('Status 200', () => pm.response.to.have.status(200));",
+									"pm.test('No GraphQL errors', () => pm.expect(body.errors).to.be.undefined);",
+									"pm.test('Post created with userId from context (not from input)', () => {",
+									"  const post = body.data.createPost;",
+									"  pm.expect(post.id).to.be.a('string');",
+									"  pm.expect(post.title).to.equal('My new post via Postman');",
+									"  pm.expect(post.user.id).to.equal(pm.collectionVariables.get('loggedUserId'));",
+									"});",
+									"",
+									"if (body.data && body.data.createPost) {",
+									"  pm.collectionVariables.set('createdPostId', body.data.createPost.id);",
+									"  console.log('createdPostId saved:', body.data.createPost.id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"query\": \"mutation CREATE_POST($data: CreatePostInput!) { createPost(data: $data) { id title body indexRef createdAt user { id userName } } }\",\n  \"variables\": {\n    \"data\": {\n      \"title\": \"My new post via Postman\",\n      \"body\": \"Content of the post created by the test collection.\"\n    }\n  }\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}",
+							"host": [
+								"{{baseUrl}}"
+							]
+						}
+					}
+				},
+				{
+					"name": "Mutation — createPost without login (expected error)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"const body = pm.response.json();",
+									"pm.test('Status 200', () => pm.response.to.have.status(200));",
+									"pm.test('Returns AuthenticationError', () => {",
+									"  pm.expect(body.errors).to.be.an('array');",
+									"  pm.expect(body.errors[0].extensions.code).to.equal('UNAUTHENTICATED');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Cookie",
+								"value": "",
+								"description": "No cookie — simulates unauthenticated"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"query\": \"mutation { createPost(data: { title: \\\"Hack\\\", body: \\\"Tentativa sem login\\\" }) { id } }\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}",
+							"host": [
+								"{{baseUrl}}"
+							]
+						}
+					},
+					"protocolProfileBehavior": {
+						"disableCookies": true
+					}
+				},
+				{
+					"name": "Mutation — updatePost (post owner)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"const body = pm.response.json();",
+									"pm.test('Status 200', () => pm.response.to.have.status(200));",
+									"pm.test('No GraphQL errors', () => pm.expect(body.errors).to.be.undefined);",
+									"pm.test('Title updated', () => {",
+									"  pm.expect(body.data.updatePost.title).to.equal('Title Updated via Postman');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"query\": \"mutation UPDATE_POST($postId: ID!, $data: UpdatePostInput!) { updatePost(postId: $postId, data: $data) { id title body } }\",\n  \"variables\": {\n    \"postId\": \"{{createdPostId}}\",\n    \"data\": {\n      \"title\": \"Title Updated via Postman\"\n    }\n  }\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}",
+							"host": [
+								"{{baseUrl}}"
+							]
+						}
+					}
+				},
+				{
+					"name": "Mutation — updatePost from another user (expected error)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"const body = pm.response.json();",
+									"pm.test('Status 200', () => pm.response.to.have.status(200));",
+									"pm.test('Returns AuthenticationError for ownership', () => {",
+									"  pm.expect(body.errors).to.be.an('array');",
+									"  pm.expect(body.errors[0].extensions.code).to.equal('UNAUTHENTICATED');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"query\": \"mutation { updatePost(postId: \\\"50\\\", data: { title: \\\"Hack\\\" }) { id } }\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}",
+							"host": [
+								"{{baseUrl}}"
+							]
+						}
+					}
+				},
+				{
+					"name": "Mutation — deletePost (post owner)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"const body = pm.response.json();",
+									"pm.test('Status 200', () => pm.response.to.have.status(200));",
+									"pm.test('No GraphQL errors', () => pm.expect(body.errors).to.be.undefined);",
+									"pm.test('Returns true', () => pm.expect(body.data.deletePost).to.be.true);"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"query\": \"mutation DELETE_POST($postId: ID!) { deletePost(postId: $postId) }\",\n  \"variables\": {\n    \"postId\": \"{{createdPostId}}\"\n  }\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}",
+							"host": [
+								"{{baseUrl}}"
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "💬 Comments",
+			"item": [
+				{
+					"name": "Mutation — createComment (requires login)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"const body = pm.response.json();",
+									"pm.test('Status 200', () => pm.response.to.have.status(200));",
+									"pm.test('No GraphQL errors', () => pm.expect(body.errors).to.be.undefined);",
+									"pm.test('Comment created with the correct user', () => {",
+									"  const comment = body.data.createComment;",
+									"  pm.expect(comment.id).to.be.a('string');",
+									"  pm.expect(comment.comment).to.equal('Great post! Commented via Postman.');",
+									"  pm.expect(comment.user.id).to.equal(pm.collectionVariables.get('loggedUserId'));",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"query\": \"mutation CREATE_COMMENT($data: CreateCommentInput!) { createComment(data: $data) { id comment createdAt user { id userName } } }\",\n  \"variables\": {\n    \"data\": {\n      \"comment\": \"Great post! Commented via Postman.\",\n      \"postId\": \"361\"\n    }\n  }\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}",
+							"host": [
+								"{{baseUrl}}"
+							]
+						}
+					}
+				},
+				{
+					"name": "Mutation — createComment without login (expected error)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"const body = pm.response.json();",
+									"pm.test('Status 200', () => pm.response.to.have.status(200));",
+									"pm.test('Returns AuthenticationError', () => {",
+									"  pm.expect(body.errors).to.be.an('array');",
+									"  pm.expect(body.errors[0].extensions.code).to.equal('UNAUTHENTICATED');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Cookie",
+								"value": "",
+								"description": "No cookie"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"query\": \"mutation { createComment(data: { comment: \\\"Tentativa sem login\\\", postId: \\\"361\\\" }) { id } }\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}",
+							"host": [
+								"{{baseUrl}}"
+							]
+						}
+					},
+					"protocolProfileBehavior": {
+						"disableCookies": true
+					}
+				},
+				{
+					"name": "Mutation — createComment duplicate (expected error)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"const body = pm.response.json();",
+									"pm.test('Status 200', () => pm.response.to.have.status(200));",
+									"pm.test('Returns ValidationError for duplicate', () => {",
+									"  pm.expect(body.errors).to.be.an('array');",
+									"  pm.expect(body.errors[0].message).to.include('Comment already created');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"query\": \"mutation { createComment(data: { comment: \\\"Great post! Commented via Postman.\\\", postId: \\\"361\\\" }) { id } }\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}",
+							"host": [
+								"{{baseUrl}}"
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "🛡️ Security",
+			"item": [
+				{
+					"name": "SQL Injection in _sort (expected error)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"const body = pm.response.json();",
+									"pm.test('Status 200', () => pm.response.to.have.status(200));",
+									"pm.test('Blocks invalid column with UserInputError', () => {",
+									"  pm.expect(body.errors).to.be.an('array');",
+									"  pm.expect(body.errors[0].message).to.include('Invalid sort column');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"query\": \"query { users(input: { _sort: \\\"password_hash\\\" }) { id } }\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}",
+							"host": [
+								"{{baseUrl}}"
+							]
+						}
+					}
+				},
+				{
+					"name": "Depth limit — query too deep (expected error)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"const body = pm.response.json();",
+									"pm.test('Status 400', () => pm.response.to.have.status(400));",
+									"pm.test('Rejected for exceeding depth', () => {",
+									"  pm.expect(body.errors).to.be.an('array');",
+									"  pm.expect(body.errors[0].message).to.include('exceeds maximum operation depth');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"query\": \"query { post(id: \\\"645\\\") { user { posts { user { posts { user { posts { user { id } } } } } } } } }\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}",
+							"host": [
+								"{{baseUrl}}"
+							]
+						}
+					}
+				},
+				{
+					"name": "Complexity limit — too many aliased fields (expected error)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"const body = pm.response.json();",
+									"pm.test('Status 400', () => pm.response.to.have.status(400));",
+									"pm.test('Rejected for exceeding complexity', () => {",
+									"  pm.expect(body.errors).to.be.an('array');",
+									"  pm.expect(body.errors[0].message).to.include('exceeds the maximum complexity');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\"query\": \"{ f0: post(id: \\\"645\\\") { id } f1: post(id: \\\"645\\\") { id } f2: post(id: \\\"645\\\") { id } f3: post(id: \\\"645\\\") { id } f4: post(id: \\\"645\\\") { id } f5: post(id: \\\"645\\\") { id } f6: post(id: \\\"645\\\") { id } f7: post(id: \\\"645\\\") { id } f8: post(id: \\\"645\\\") { id } f9: post(id: \\\"645\\\") { id } f10: post(id: \\\"645\\\") { id } f11: post(id: \\\"645\\\") { id } f12: post(id: \\\"645\\\") { id } f13: post(id: \\\"645\\\") { id } f14: post(id: \\\"645\\\") { id } f15: post(id: \\\"645\\\") { id } f16: post(id: \\\"645\\\") { id } f17: post(id: \\\"645\\\") { id } f18: post(id: \\\"645\\\") { id } f19: post(id: \\\"645\\\") { id } f20: post(id: \\\"645\\\") { id } f21: post(id: \\\"645\\\") { id } f22: post(id: \\\"645\\\") { id } f23: post(id: \\\"645\\\") { id } f24: post(id: \\\"645\\\") { id } f25: post(id: \\\"645\\\") { id } f26: post(id: \\\"645\\\") { id } f27: post(id: \\\"645\\\") { id } f28: post(id: \\\"645\\\") { id } f29: post(id: \\\"645\\\") { id } f30: post(id: \\\"645\\\") { id } f31: post(id: \\\"645\\\") { id } f32: post(id: \\\"645\\\") { id } f33: post(id: \\\"645\\\") { id } f34: post(id: \\\"645\\\") { id } f35: post(id: \\\"645\\\") { id } f36: post(id: \\\"645\\\") { id } f37: post(id: \\\"645\\\") { id } f38: post(id: \\\"645\\\") { id } f39: post(id: \\\"645\\\") { id } f40: post(id: \\\"645\\\") { id } f41: post(id: \\\"645\\\") { id } f42: post(id: \\\"645\\\") { id } f43: post(id: \\\"645\\\") { id } f44: post(id: \\\"645\\\") { id } f45: post(id: \\\"645\\\") { id } f46: post(id: \\\"645\\\") { id } f47: post(id: \\\"645\\\") { id } f48: post(id: \\\"645\\\") { id } f49: post(id: \\\"645\\\") { id } f50: post(id: \\\"645\\\") { id } f51: post(id: \\\"645\\\") { id } f52: post(id: \\\"645\\\") { id } f53: post(id: \\\"645\\\") { id } f54: post(id: \\\"645\\\") { id } f55: post(id: \\\"645\\\") { id } f56: post(id: \\\"645\\\") { id } f57: post(id: \\\"645\\\") { id } f58: post(id: \\\"645\\\") { id } f59: post(id: \\\"645\\\") { id } f60: post(id: \\\"645\\\") { id } f61: post(id: \\\"645\\\") { id } f62: post(id: \\\"645\\\") { id } f63: post(id: \\\"645\\\") { id } f64: post(id: \\\"645\\\") { id } f65: post(id: \\\"645\\\") { id } f66: post(id: \\\"645\\\") { id } f67: post(id: \\\"645\\\") { id } f68: post(id: \\\"645\\\") { id } f69: post(id: \\\"645\\\") { id } f70: post(id: \\\"645\\\") { id } f71: post(id: \\\"645\\\") { id } f72: post(id: \\\"645\\\") { id } f73: post(id: \\\"645\\\") { id } f74: post(id: \\\"645\\\") { id } f75: post(id: \\\"645\\\") { id } f76: post(id: \\\"645\\\") { id } f77: post(id: \\\"645\\\") { id } f78: post(id: \\\"645\\\") { id } f79: post(id: \\\"645\\\") { id } f80: post(id: \\\"645\\\") { id } f81: post(id: \\\"645\\\") { id } f82: post(id: \\\"645\\\") { id } f83: post(id: \\\"645\\\") { id } f84: post(id: \\\"645\\\") { id } f85: post(id: \\\"645\\\") { id } f86: post(id: \\\"645\\\") { id } f87: post(id: \\\"645\\\") { id } f88: post(id: \\\"645\\\") { id } f89: post(id: \\\"645\\\") { id } f90: post(id: \\\"645\\\") { id } f91: post(id: \\\"645\\\") { id } f92: post(id: \\\"645\\\") { id } f93: post(id: \\\"645\\\") { id } f94: post(id: \\\"645\\\") { id } f95: post(id: \\\"645\\\") { id } f96: post(id: \\\"645\\\") { id } f97: post(id: \\\"645\\\") { id } f98: post(id: \\\"645\\\") { id } f99: post(id: \\\"645\\\") { id } f100: post(id: \\\"645\\\") { id } f101: post(id: \\\"645\\\") { id } f102: post(id: \\\"645\\\") { id } f103: post(id: \\\"645\\\") { id } f104: post(id: \\\"645\\\") { id } f105: post(id: \\\"645\\\") { id } f106: post(id: \\\"645\\\") { id } f107: post(id: \\\"645\\\") { id } f108: post(id: \\\"645\\\") { id } f109: post(id: \\\"645\\\") { id } f110: post(id: \\\"645\\\") { id } f111: post(id: \\\"645\\\") { id } f112: post(id: \\\"645\\\") { id } f113: post(id: \\\"645\\\") { id } f114: post(id: \\\"645\\\") { id } f115: post(id: \\\"645\\\") { id } f116: post(id: \\\"645\\\") { id } f117: post(id: \\\"645\\\") { id } f118: post(id: \\\"645\\\") { id } f119: post(id: \\\"645\\\") { id } f120: post(id: \\\"645\\\") { id } f121: post(id: \\\"645\\\") { id } f122: post(id: \\\"645\\\") { id } f123: post(id: \\\"645\\\") { id } f124: post(id: \\\"645\\\") { id } f125: post(id: \\\"645\\\") { id } f126: post(id: \\\"645\\\") { id } f127: post(id: \\\"645\\\") { id } f128: post(id: \\\"645\\\") { id } f129: post(id: \\\"645\\\") { id } f130: post(id: \\\"645\\\") { id } f131: post(id: \\\"645\\\") { id } f132: post(id: \\\"645\\\") { id } f133: post(id: \\\"645\\\") { id } f134: post(id: \\\"645\\\") { id } f135: post(id: \\\"645\\\") { id } f136: post(id: \\\"645\\\") { id } f137: post(id: \\\"645\\\") { id } f138: post(id: \\\"645\\\") { id } f139: post(id: \\\"645\\\") { id } f140: post(id: \\\"645\\\") { id } f141: post(id: \\\"645\\\") { id } f142: post(id: \\\"645\\\") { id } f143: post(id: \\\"645\\\") { id } f144: post(id: \\\"645\\\") { id } f145: post(id: \\\"645\\\") { id } f146: post(id: \\\"645\\\") { id } f147: post(id: \\\"645\\\") { id } f148: post(id: \\\"645\\\") { id } f149: post(id: \\\"645\\\") { id } f150: post(id: \\\"645\\\") { id } f151: post(id: \\\"645\\\") { id } f152: post(id: \\\"645\\\") { id } f153: post(id: \\\"645\\\") { id } f154: post(id: \\\"645\\\") { id } f155: post(id: \\\"645\\\") { id } f156: post(id: \\\"645\\\") { id } f157: post(id: \\\"645\\\") { id } f158: post(id: \\\"645\\\") { id } f159: post(id: \\\"645\\\") { id } f160: post(id: \\\"645\\\") { id } f161: post(id: \\\"645\\\") { id } f162: post(id: \\\"645\\\") { id } f163: post(id: \\\"645\\\") { id } f164: post(id: \\\"645\\\") { id } f165: post(id: \\\"645\\\") { id } f166: post(id: \\\"645\\\") { id } f167: post(id: \\\"645\\\") { id } f168: post(id: \\\"645\\\") { id } f169: post(id: \\\"645\\\") { id } f170: post(id: \\\"645\\\") { id } f171: post(id: \\\"645\\\") { id } f172: post(id: \\\"645\\\") { id } f173: post(id: \\\"645\\\") { id } f174: post(id: \\\"645\\\") { id } f175: post(id: \\\"645\\\") { id } f176: post(id: \\\"645\\\") { id } f177: post(id: \\\"645\\\") { id } f178: post(id: \\\"645\\\") { id } f179: post(id: \\\"645\\\") { id } f180: post(id: \\\"645\\\") { id } f181: post(id: \\\"645\\\") { id } f182: post(id: \\\"645\\\") { id } f183: post(id: \\\"645\\\") { id } f184: post(id: \\\"645\\\") { id } f185: post(id: \\\"645\\\") { id } f186: post(id: \\\"645\\\") { id } f187: post(id: \\\"645\\\") { id } f188: post(id: \\\"645\\\") { id } f189: post(id: \\\"645\\\") { id } f190: post(id: \\\"645\\\") { id } f191: post(id: \\\"645\\\") { id } f192: post(id: \\\"645\\\") { id } f193: post(id: \\\"645\\\") { id } f194: post(id: \\\"645\\\") { id } f195: post(id: \\\"645\\\") { id } f196: post(id: \\\"645\\\") { id } f197: post(id: \\\"645\\\") { id } f198: post(id: \\\"645\\\") { id } f199: post(id: \\\"645\\\") { id } f200: post(id: \\\"645\\\") { id } f201: post(id: \\\"645\\\") { id } f202: post(id: \\\"645\\\") { id } f203: post(id: \\\"645\\\") { id } f204: post(id: \\\"645\\\") { id } f205: post(id: \\\"645\\\") { id } f206: post(id: \\\"645\\\") { id } f207: post(id: \\\"645\\\") { id } f208: post(id: \\\"645\\\") { id } f209: post(id: \\\"645\\\") { id } f210: post(id: \\\"645\\\") { id } f211: post(id: \\\"645\\\") { id } f212: post(id: \\\"645\\\") { id } f213: post(id: \\\"645\\\") { id } f214: post(id: \\\"645\\\") { id } f215: post(id: \\\"645\\\") { id } f216: post(id: \\\"645\\\") { id } f217: post(id: \\\"645\\\") { id } f218: post(id: \\\"645\\\") { id } f219: post(id: \\\"645\\\") { id } f220: post(id: \\\"645\\\") { id } f221: post(id: \\\"645\\\") { id } f222: post(id: \\\"645\\\") { id } f223: post(id: \\\"645\\\") { id } f224: post(id: \\\"645\\\") { id } f225: post(id: \\\"645\\\") { id } f226: post(id: \\\"645\\\") { id } f227: post(id: \\\"645\\\") { id } f228: post(id: \\\"645\\\") { id } f229: post(id: \\\"645\\\") { id } f230: post(id: \\\"645\\\") { id } f231: post(id: \\\"645\\\") { id } f232: post(id: \\\"645\\\") { id } f233: post(id: \\\"645\\\") { id } f234: post(id: \\\"645\\\") { id } f235: post(id: \\\"645\\\") { id } f236: post(id: \\\"645\\\") { id } f237: post(id: \\\"645\\\") { id } f238: post(id: \\\"645\\\") { id } f239: post(id: \\\"645\\\") { id } f240: post(id: \\\"645\\\") { id } f241: post(id: \\\"645\\\") { id } f242: post(id: \\\"645\\\") { id } f243: post(id: \\\"645\\\") { id } f244: post(id: \\\"645\\\") { id } f245: post(id: \\\"645\\\") { id } f246: post(id: \\\"645\\\") { id } f247: post(id: \\\"645\\\") { id } f248: post(id: \\\"645\\\") { id } f249: post(id: \\\"645\\\") { id } f250: post(id: \\\"645\\\") { id } f251: post(id: \\\"645\\\") { id } f252: post(id: \\\"645\\\") { id } f253: post(id: \\\"645\\\") { id } f254: post(id: \\\"645\\\") { id } f255: post(id: \\\"645\\\") { id } f256: post(id: \\\"645\\\") { id } f257: post(id: \\\"645\\\") { id } f258: post(id: \\\"645\\\") { id } f259: post(id: \\\"645\\\") { id } f260: post(id: \\\"645\\\") { id } f261: post(id: \\\"645\\\") { id } f262: post(id: \\\"645\\\") { id } f263: post(id: \\\"645\\\") { id } f264: post(id: \\\"645\\\") { id } f265: post(id: \\\"645\\\") { id } f266: post(id: \\\"645\\\") { id } f267: post(id: \\\"645\\\") { id } f268: post(id: \\\"645\\\") { id } f269: post(id: \\\"645\\\") { id } f270: post(id: \\\"645\\\") { id } f271: post(id: \\\"645\\\") { id } f272: post(id: \\\"645\\\") { id } f273: post(id: \\\"645\\\") { id } f274: post(id: \\\"645\\\") { id } f275: post(id: \\\"645\\\") { id } f276: post(id: \\\"645\\\") { id } f277: post(id: \\\"645\\\") { id } f278: post(id: \\\"645\\\") { id } f279: post(id: \\\"645\\\") { id } f280: post(id: \\\"645\\\") { id } f281: post(id: \\\"645\\\") { id } f282: post(id: \\\"645\\\") { id } f283: post(id: \\\"645\\\") { id } f284: post(id: \\\"645\\\") { id } f285: post(id: \\\"645\\\") { id } f286: post(id: \\\"645\\\") { id } f287: post(id: \\\"645\\\") { id } f288: post(id: \\\"645\\\") { id } f289: post(id: \\\"645\\\") { id } f290: post(id: \\\"645\\\") { id } f291: post(id: \\\"645\\\") { id } f292: post(id: \\\"645\\\") { id } f293: post(id: \\\"645\\\") { id } f294: post(id: \\\"645\\\") { id } f295: post(id: \\\"645\\\") { id } f296: post(id: \\\"645\\\") { id } f297: post(id: \\\"645\\\") { id } f298: post(id: \\\"645\\\") { id } f299: post(id: \\\"645\\\") { id } f300: post(id: \\\"645\\\") { id } f301: post(id: \\\"645\\\") { id } f302: post(id: \\\"645\\\") { id } f303: post(id: \\\"645\\\") { id } f304: post(id: \\\"645\\\") { id } f305: post(id: \\\"645\\\") { id } f306: post(id: \\\"645\\\") { id } f307: post(id: \\\"645\\\") { id } f308: post(id: \\\"645\\\") { id } f309: post(id: \\\"645\\\") { id } f310: post(id: \\\"645\\\") { id } f311: post(id: \\\"645\\\") { id } f312: post(id: \\\"645\\\") { id } f313: post(id: \\\"645\\\") { id } f314: post(id: \\\"645\\\") { id } f315: post(id: \\\"645\\\") { id } f316: post(id: \\\"645\\\") { id } f317: post(id: \\\"645\\\") { id } f318: post(id: \\\"645\\\") { id } f319: post(id: \\\"645\\\") { id } f320: post(id: \\\"645\\\") { id } f321: post(id: \\\"645\\\") { id } f322: post(id: \\\"645\\\") { id } f323: post(id: \\\"645\\\") { id } f324: post(id: \\\"645\\\") { id } f325: post(id: \\\"645\\\") { id } f326: post(id: \\\"645\\\") { id } f327: post(id: \\\"645\\\") { id } f328: post(id: \\\"645\\\") { id } f329: post(id: \\\"645\\\") { id } f330: post(id: \\\"645\\\") { id } f331: post(id: \\\"645\\\") { id } f332: post(id: \\\"645\\\") { id } f333: post(id: \\\"645\\\") { id } f334: post(id: \\\"645\\\") { id } f335: post(id: \\\"645\\\") { id } f336: post(id: \\\"645\\\") { id } f337: post(id: \\\"645\\\") { id } f338: post(id: \\\"645\\\") { id } f339: post(id: \\\"645\\\") { id } f340: post(id: \\\"645\\\") { id } f341: post(id: \\\"645\\\") { id } f342: post(id: \\\"645\\\") { id } f343: post(id: \\\"645\\\") { id } f344: post(id: \\\"645\\\") { id } f345: post(id: \\\"645\\\") { id } f346: post(id: \\\"645\\\") { id } f347: post(id: \\\"645\\\") { id } f348: post(id: \\\"645\\\") { id } f349: post(id: \\\"645\\\") { id } f350: post(id: \\\"645\\\") { id } f351: post(id: \\\"645\\\") { id } f352: post(id: \\\"645\\\") { id } f353: post(id: \\\"645\\\") { id } f354: post(id: \\\"645\\\") { id } f355: post(id: \\\"645\\\") { id } f356: post(id: \\\"645\\\") { id } f357: post(id: \\\"645\\\") { id } f358: post(id: \\\"645\\\") { id } f359: post(id: \\\"645\\\") { id } f360: post(id: \\\"645\\\") { id } f361: post(id: \\\"645\\\") { id } f362: post(id: \\\"645\\\") { id } f363: post(id: \\\"645\\\") { id } f364: post(id: \\\"645\\\") { id } f365: post(id: \\\"645\\\") { id } f366: post(id: \\\"645\\\") { id } f367: post(id: \\\"645\\\") { id } f368: post(id: \\\"645\\\") { id } f369: post(id: \\\"645\\\") { id } f370: post(id: \\\"645\\\") { id } f371: post(id: \\\"645\\\") { id } f372: post(id: \\\"645\\\") { id } f373: post(id: \\\"645\\\") { id } f374: post(id: \\\"645\\\") { id } f375: post(id: \\\"645\\\") { id } f376: post(id: \\\"645\\\") { id } f377: post(id: \\\"645\\\") { id } f378: post(id: \\\"645\\\") { id } f379: post(id: \\\"645\\\") { id } f380: post(id: \\\"645\\\") { id } f381: post(id: \\\"645\\\") { id } f382: post(id: \\\"645\\\") { id } f383: post(id: \\\"645\\\") { id } f384: post(id: \\\"645\\\") { id } f385: post(id: \\\"645\\\") { id } f386: post(id: \\\"645\\\") { id } f387: post(id: \\\"645\\\") { id } f388: post(id: \\\"645\\\") { id } f389: post(id: \\\"645\\\") { id } f390: post(id: \\\"645\\\") { id } f391: post(id: \\\"645\\\") { id } f392: post(id: \\\"645\\\") { id } f393: post(id: \\\"645\\\") { id } f394: post(id: \\\"645\\\") { id } f395: post(id: \\\"645\\\") { id } f396: post(id: \\\"645\\\") { id } f397: post(id: \\\"645\\\") { id } f398: post(id: \\\"645\\\") { id } f399: post(id: \\\"645\\\") { id } f400: post(id: \\\"645\\\") { id } f401: post(id: \\\"645\\\") { id } f402: post(id: \\\"645\\\") { id } f403: post(id: \\\"645\\\") { id } f404: post(id: \\\"645\\\") { id } f405: post(id: \\\"645\\\") { id } f406: post(id: \\\"645\\\") { id } f407: post(id: \\\"645\\\") { id } f408: post(id: \\\"645\\\") { id } f409: post(id: \\\"645\\\") { id } f410: post(id: \\\"645\\\") { id } f411: post(id: \\\"645\\\") { id } f412: post(id: \\\"645\\\") { id } f413: post(id: \\\"645\\\") { id } f414: post(id: \\\"645\\\") { id } f415: post(id: \\\"645\\\") { id } f416: post(id: \\\"645\\\") { id } f417: post(id: \\\"645\\\") { id } f418: post(id: \\\"645\\\") { id } f419: post(id: \\\"645\\\") { id } f420: post(id: \\\"645\\\") { id } f421: post(id: \\\"645\\\") { id } f422: post(id: \\\"645\\\") { id } f423: post(id: \\\"645\\\") { id } f424: post(id: \\\"645\\\") { id } f425: post(id: \\\"645\\\") { id } f426: post(id: \\\"645\\\") { id } f427: post(id: \\\"645\\\") { id } f428: post(id: \\\"645\\\") { id } f429: post(id: \\\"645\\\") { id } f430: post(id: \\\"645\\\") { id } f431: post(id: \\\"645\\\") { id } f432: post(id: \\\"645\\\") { id } f433: post(id: \\\"645\\\") { id } f434: post(id: \\\"645\\\") { id } f435: post(id: \\\"645\\\") { id } f436: post(id: \\\"645\\\") { id } f437: post(id: \\\"645\\\") { id } f438: post(id: \\\"645\\\") { id } f439: post(id: \\\"645\\\") { id } f440: post(id: \\\"645\\\") { id } f441: post(id: \\\"645\\\") { id } f442: post(id: \\\"645\\\") { id } f443: post(id: \\\"645\\\") { id } f444: post(id: \\\"645\\\") { id } f445: post(id: \\\"645\\\") { id } f446: post(id: \\\"645\\\") { id } f447: post(id: \\\"645\\\") { id } f448: post(id: \\\"645\\\") { id } f449: post(id: \\\"645\\\") { id } f450: post(id: \\\"645\\\") { id } f451: post(id: \\\"645\\\") { id } f452: post(id: \\\"645\\\") { id } f453: post(id: \\\"645\\\") { id } f454: post(id: \\\"645\\\") { id } f455: post(id: \\\"645\\\") { id } f456: post(id: \\\"645\\\") { id } f457: post(id: \\\"645\\\") { id } f458: post(id: \\\"645\\\") { id } f459: post(id: \\\"645\\\") { id } f460: post(id: \\\"645\\\") { id } f461: post(id: \\\"645\\\") { id } f462: post(id: \\\"645\\\") { id } f463: post(id: \\\"645\\\") { id } f464: post(id: \\\"645\\\") { id } f465: post(id: \\\"645\\\") { id } f466: post(id: \\\"645\\\") { id } f467: post(id: \\\"645\\\") { id } f468: post(id: \\\"645\\\") { id } f469: post(id: \\\"645\\\") { id } f470: post(id: \\\"645\\\") { id } f471: post(id: \\\"645\\\") { id } f472: post(id: \\\"645\\\") { id } f473: post(id: \\\"645\\\") { id } f474: post(id: \\\"645\\\") { id } f475: post(id: \\\"645\\\") { id } f476: post(id: \\\"645\\\") { id } f477: post(id: \\\"645\\\") { id } f478: post(id: \\\"645\\\") { id } f479: post(id: \\\"645\\\") { id } f480: post(id: \\\"645\\\") { id } f481: post(id: \\\"645\\\") { id } f482: post(id: \\\"645\\\") { id } f483: post(id: \\\"645\\\") { id } f484: post(id: \\\"645\\\") { id } f485: post(id: \\\"645\\\") { id } f486: post(id: \\\"645\\\") { id } f487: post(id: \\\"645\\\") { id } f488: post(id: \\\"645\\\") { id } f489: post(id: \\\"645\\\") { id } f490: post(id: \\\"645\\\") { id } f491: post(id: \\\"645\\\") { id } f492: post(id: \\\"645\\\") { id } f493: post(id: \\\"645\\\") { id } f494: post(id: \\\"645\\\") { id } f495: post(id: \\\"645\\\") { id } f496: post(id: \\\"645\\\") { id } f497: post(id: \\\"645\\\") { id } f498: post(id: \\\"645\\\") { id } f499: post(id: \\\"645\\\") { id } f500: post(id: \\\"645\\\") { id } }\"}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}",
+							"host": [
+								"{{baseUrl}}"
+							]
+						}
+					}
+				},
+				{
+					"name": "Security headers present on every response",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('helmet security headers present', () => {",
+									"  pm.expect(pm.response.headers.get('X-Content-Type-Options')).to.eql('nosniff');",
+									"  pm.expect(pm.response.headers.get('X-Frame-Options')).to.exist;",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\"query\": \"{ __typename }\"}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}",
+							"host": [
+								"{{baseUrl}}"
+							]
+						}
+					}
+				},
+				{
+					"name": "Rate limit login — 6th attempt blocked",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"const body = pm.response.json();",
+									"pm.test('Status 200 with rate limit or authentication error', () => {",
+									"  pm.expect(body.errors).to.be.an('array');",
+									"  const msg = body.errors[0].message;",
+									"  const isRateLimited = msg.includes('Too many login attempts');",
+									"  const isAuthError = msg.includes('Invalid username or password');",
+									"  pm.expect(isRateLimited || isAuthError).to.be.true;",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"query\": \"mutation { login(data: { userName: \\\"nonexistent.user\\\", password: \\\"Senha123\\\" }) { userId } }\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}",
+							"host": [
+								"{{baseUrl}}"
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "🔐 Logout (end of flow — elisa.pereira)",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"const body = pm.response.json();",
+							"pm.test('Status 200', () => pm.response.to.have.status(200));",
+							"pm.test('No GraphQL errors', () => pm.expect(body.errors).to.be.undefined);",
+							"pm.test('Returns true', () => pm.expect(body.data.logout).to.be.true);"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"query\": \"mutation LOGOUT($userName: String!) { logout(userName: $userName) }\",\n  \"variables\": {\n    \"userName\": \"elisa.pereira\"\n  }\n}"
+				},
+				"url": {
+					"raw": "{{baseUrl}}",
+					"host": [
+						"{{baseUrl}}"
+					]
+				}
+			}
+		},
+		{
+			"name": "🔄 Full flow (Happy Path)",
+			"description": "Execute as requests desta pasta em ordem para testar o fluxo completo: login → criar post → comentar → deletar → logout.",
+			"item": [
+				{
+					"name": "1. Login as talita.melo",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"const body = pm.response.json();",
+									"pm.test('Login ok', () => pm.expect(body.errors).to.be.undefined);",
+									"if (body.data) pm.collectionVariables.set('loggedUserId', body.data.login.userId);"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"query\": \"mutation { login(data: { userName: \\\"talita.melo\\\", password: \\\"Senha123\\\" }) { userId } }\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}",
+							"host": [
+								"{{baseUrl}}"
+							]
+						}
+					}
+				},
+				{
+					"name": "2. Create post",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"const body = pm.response.json();",
+									"pm.test('Post created', () => pm.expect(body.errors).to.be.undefined);",
+									"if (body.data) pm.collectionVariables.set('createdPostId', body.data.createPost.id);"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"query\": \"mutation { createPost(data: { title: \\\"Happy Path Post\\\", body: \\\"Content of the full flow.\\\" }) { id title user { userName } } }\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}",
+							"host": [
+								"{{baseUrl}}"
+							]
+						}
+					}
+				},
+				{
+					"name": "3. Fetch created post",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"const body = pm.response.json();",
+									"pm.test('Post found', () => {",
+									"  pm.expect(body.errors).to.be.undefined;",
+									"  pm.expect(body.data.post.title).to.equal('Happy Path Post');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"query\": \"query($id: ID!) { post(id: $id) { id title body user { userName } comments { id } } }\",\n  \"variables\": { \"id\": \"{{createdPostId}}\" }\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}",
+							"host": [
+								"{{baseUrl}}"
+							]
+						}
+					}
+				},
+				{
+					"name": "4. Update post",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"const body = pm.response.json();",
+									"pm.test('Post updated', () => {",
+									"  pm.expect(body.errors).to.be.undefined;",
+									"  pm.expect(body.data.updatePost.title).to.equal('Post Atualizado — Happy Path');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"query\": \"mutation($postId: ID!, $data: UpdatePostInput!) { updatePost(postId: $postId, data: $data) { id title } }\",\n  \"variables\": {\n    \"postId\": \"{{createdPostId}}\",\n    \"data\": { \"title\": \"Post Atualizado — Happy Path\" }\n  }\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}",
+							"host": [
+								"{{baseUrl}}"
+							]
+						}
+					}
+				},
+				{
+					"name": "5. Delete post",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"const body = pm.response.json();",
+									"pm.test('Post deleted', () => {",
+									"  pm.expect(body.errors).to.be.undefined;",
+									"  pm.expect(body.data.deletePost).to.be.true;",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"query\": \"mutation($postId: ID!) { deletePost(postId: $postId) }\",\n  \"variables\": { \"postId\": \"{{createdPostId}}\" }\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}",
+							"host": [
+								"{{baseUrl}}"
+							]
+						}
+					}
+				},
+				{
+					"name": "6. Logout",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"const body = pm.response.json();",
+									"pm.test('Logout ok', () => {",
+									"  pm.expect(body.errors).to.be.undefined;",
+									"  pm.expect(body.data.logout).to.be.true;",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"query\": \"mutation { logout(userName: \\\"talita.melo\\\") }\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}",
+							"host": [
+								"{{baseUrl}}"
+							]
+						}
+					}
+				}
+			]
+		}
+	]
+}

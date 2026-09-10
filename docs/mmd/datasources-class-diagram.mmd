@@ -1,0 +1,71 @@
+classDiagram
+    class SQLDatasource~TKey, TValue~ {
+        +Knex db
+        +Knex readDb
+        #context
+        #cache
+        -DataLoader~TKey, TValue~ _loader
+        +constructor(dbConnection, readConnection?)
+        +initialize(context, cache) void
+        +batchLoad(id) Promise~TValue~
+        +batchLoaderCallback(ids) Promise~TValue[]~
+    }
+    note for SQLDatasource "readConnection defaults to dbConnection —\nsame connection unless DATABASE_REPLICA_HOST\nis set. See database-scaling.md."
+
+    class UserSQLDataSource {
+        +tableName = "users"
+        -DataLoader _byIdLoader
+        -DataLoader _byUserNameLoader
+        +getUsers(filters) Promise~User[]~
+        +getUser(id) Promise~User~
+        +getUserByUserName(userName) Promise~User~
+        +batchLoadById(id) Promise~User~
+        +createUser(input) Promise~User~
+        +updateUser(id, input) Promise~User~
+        +deleteUser(id) Promise~bool~
+        +setToken(id, token) Promise~void~
+        +clearToken(id) Promise~void~
+    }
+    note for UserSQLDataSource "createUser/updateUser dedupe user_name\nvia the DB-level unique index, not a\ncheck-then-insert query — catches\nER_DUP_ENTRY from a real insert/update."
+
+    class PostSQLDataSource {
+        +tableName = "posts"
+        -DataLoader _byUserIdLoader
+        +getPosts(filters) Promise~Post[]~
+        +getPost(id) Promise~Post~
+        +batchLoadByUserId(userId) Promise~Post[]~
+        +createPost(input) Promise~Post~
+        +updatePost(id, input, loggedUserId) Promise~Post~
+        +deletePost(id, loggedUserId) Promise~bool~
+    }
+
+    class CommentSQLDataSource {
+        +tableName = "comments"
+        +getById(id) Promise~CommentRow~
+        +create(input) Promise~Comment~
+        +batchLoaderCallback(postIds) Promise~Comment[][]~
+    }
+    note for CommentSQLDataSource "create() dedupes via a DB-level unique\nindex on (user_id, post_id, comment_hash),\nnot a check-then-insert query."
+
+    class isDuplicateEntryError {
+        <<function>>
+        +isDuplicateEntryError(err) bool
+    }
+    note for isDuplicateEntryError "Shared helper (datasources/sql/db-errors.ts):\ndetects mysql2's ER_DUP_ENTRY code so a real\nunique-constraint violation can be turned into\na ValidationError instead of a raw DB error."
+
+    isDuplicateEntryError <.. UserSQLDataSource : uses
+    isDuplicateEntryError <.. CommentSQLDataSource : uses
+
+    class LoginApi {
+        -Context context
+        +initialize(context) void
+        +getUser(userName) Promise~User~
+        +login(userName, password) Promise~LoginResult~
+        +logout(userName) Promise~bool~
+        +createJwtToken(payload) string
+    }
+
+    SQLDatasource <|-- UserSQLDataSource
+    SQLDatasource <|-- PostSQLDataSource
+    SQLDatasource <|-- CommentSQLDataSource
+    LoginApi ..> UserSQLDataSource : reads/writes via context.dataSources.userDb

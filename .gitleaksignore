@@ -1,0 +1,12 @@
+# Documented false positive: a long-expired example JWT in a sample query
+# file, not a live credential.
+queries/query_with_authentication_0001.gql:jwt:3
+
+# Historical: two JWTs in db.json (a mock/prototype dataset from before this
+# project's migration to MySQL — 2021 timestamps embedded in the tokens
+# themselves; expired since June 2021). db.json no longer exists in the
+# working tree; can't be validated against a user row that no longer exists
+# either way. A history rewrite to scrub these is disproportionate to an
+# already-inert finding.
+7e6393b92becea9fb31df49116730a3b09f826c0:db.json:jwt:180
+7e6393b92becea9fb31df49116730a3b09f826c0:db.json:jwt:190

@@ -1,0 +1,34 @@
+erDiagram
+    USERS ||--o{ POSTS : "writes (ON DELETE CASCADE)"
+    USERS ||--o{ COMMENTS : "writes (ON DELETE CASCADE)"
+    POSTS ||--o{ COMMENTS : "receives (ON DELETE CASCADE)"
+
+    USERS {
+        int id PK "increments"
+        string first_name "varchar(100)"
+        string last_name "varchar(100)"
+        string user_name UK "varchar(100), unique"
+        string password_hash "varchar(255), bcrypt"
+        string token "varchar(512), current session JWT"
+        int index_ref "unsigned, default 0"
+        timestamp created_at "default now()"
+    }
+
+    POSTS {
+        int id PK "increments"
+        string title "varchar(255)"
+        text body
+        int user_id FK "unsigned → users.id"
+        int index_ref "unsigned, default 0"
+        timestamp created_at "default now()"
+    }
+
+    COMMENTS {
+        int id PK "increments"
+        text comment
+        string comment_hash UK "char(32), md5(comment) — with user_id+post_id, unique"
+        int post_id FK "unsigned → posts.id"
+        int user_id FK "unsigned → users.id"
+        timestamp created_at "default now()"
+        timestamp updated_at "default now()"
+    }

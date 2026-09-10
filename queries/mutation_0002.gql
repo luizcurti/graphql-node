@@ -1,0 +1,37 @@
+# Query variables
+# {
+#  "title": "The dynamic title",
+#  "body": "The content"
+# }
+mutation CREATE_POST($title: String!, $body: String!) {
+  createPost(data: { title: $title, body: $body }) {
+    id
+    title
+    body
+    user {
+      firstName
+    }
+    indexRef
+    createdAt
+  }
+}
+
+# {
+#   "postId": "dlwJghN",
+#   "data": {
+#     "title": "The new title",
+#     "body": "The new body"
+#   }
+# }
+mutation UPDATE_POST($postId: ID!, $data: UpdatePostInput!) {
+  updatePost(postId: $postId, data: $data) {
+    id
+    title
+    body
+    user {
+      firstName
+    }
+    indexRef
+    createdAt
+  }
+}

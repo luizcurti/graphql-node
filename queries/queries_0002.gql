@@ -1,0 +1,13 @@
+query GET_POST {
+  post(id: "645") {
+    id
+    title
+  }
+}
+
+query GET_POSTS {
+  posts {
+    id
+    title
+  }
+}

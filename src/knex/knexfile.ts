@@ -1,0 +1,64 @@
+import { resolve } from 'path';
+import dotenv from 'dotenv';
+import type { Knex } from 'knex';
+
+dotenv.config({
+  path: resolve(__dirname, '..', '..', '.env'),
+});
+
+// The MySQL server's session time_zone otherwise follows the container/host
+// OS timezone (e.g. America/Sao_Paulo), which can reject valid UTC instants
+// that fall in a DST transition gap. Exported (rather than inlined into
+// `pool.afterCreate` below) so this real, previously-hit bug fix is unit
+// testable on its own.
+export const setUtcSessionTimezone = (
+  conn: { query: (sql: string, cb: (err: Error | null) => void) => void },
+  done: (err: Error | null, conn: unknown) => void,
+): void => {
+  conn.query('SET time_zone = "+00:00"', (err) => done(err, conn));
+};
+
+const sharedConfig: Omit<Knex.Config, 'migrations' | 'seeds'> = {
+  client: process.env.DATABASE_CLIENT || 'mysql2',
+  connection: {
+    host: process.env.DATABASE_HOST,
+    port: Number(process.env.DATABASE_PORT),
+    database: process.env.DATABASE_NAME,
+    user: process.env.DATABASE_USER,
+    password: process.env.DATABASE_PASSWORD,
+    // Force UTC so TIMESTAMP literals are interpreted the same way regardless
+    // of the host/container OS timezone (avoids DST-gap datetimes like
+    // '2015-10-18 00:56:33' being rejected in America/Sao_Paulo).
+    timezone: 'Z',
+  },
+  pool: {
+    min: Number(process.env.DATABASE_POOL_MIN) || 2,
+    max: Number(process.env.DATABASE_POOL_MAX) || 10,
+    afterCreate: setUtcSessionTimezone,
+  },
+};
+
+const config: Record<string, Knex.Config> = {
+  development: {
+    ...sharedConfig,
+    migrations: {
+      tableName: 'knex_migrations',
+      directory: resolve(__dirname, 'migrations'),
+    },
+    seeds: {
+      directory: resolve(__dirname, 'seeds'),
+    },
+  },
+  production: {
+    ...sharedConfig,
+    migrations: {
+      tableName: 'knex_migrations',
+      directory: resolve(__dirname, 'migrations'),
+    },
+    seeds: {
+      directory: resolve(__dirname, 'seeds'),
+    },
+  },
+};
+
+export default config;

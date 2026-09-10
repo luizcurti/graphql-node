@@ -1,0 +1,75 @@
+mutation CREATE_POST {
+  createPost(data: { title: "The title", body: "The content" }) {
+    id
+    title
+    body
+    user {
+      firstName
+    }
+    indexRef
+    createdAt
+  }
+}
+
+mutation UPDATE_POST {
+  updatePost(postId: "645", data: { title: "UPDATED - The title" }) {
+    id
+    title
+    body
+    user {
+      firstName
+    }
+    indexRef
+    createdAt
+  }
+}
+
+mutation DELETE_POST {
+  deletePost(postId: "645")
+}
+
+mutation CREATE_USER {
+  createUser(
+    data: {
+      firstName: "John"
+      lastName: "Miranda"
+      userName: "john-miranda1"
+      password: "Senha123"
+    }
+  ) {
+    id
+    firstName
+    lastName
+    userName
+    indexRef
+    createdAt
+    posts {
+      id
+    }
+  }
+}
+
+mutation UPDATE_USER {
+  updateUser(
+    userId: "602"
+    data: {
+      firstName: "NEWFIRST"
+      lastName: "New last"
+      userName: "new.user-name"
+    }
+  ) {
+    id
+    firstName
+    lastName
+    userName
+    indexRef
+    createdAt
+    posts {
+      id
+    }
+  }
+}
+
+mutation DELETE_USER {
+  deleteUser(userId: "602")
+}

@@ -1,0 +1,56 @@
+sequenceDiagram
+    autonumber
+    participant PostOwnerWS as WS Client (post owner)
+    participant OtherWS as WS Client (other logged-in user)
+    participant WSServer as graphql-ws (useServer)
+    participant PS as PubSub
+    participant KC as Kafka consumer group<br/>(graphql-node-subscriptions)
+    participant KT as Kafka topic<br/>(comment.created)
+    participant KP as Kafka producer
+    participant HTTP as Apollo Server (HTTP)
+    participant CDB as CommentSQLDataSource
+    participant PostDB as PostSQLDataSource
+    participant DB as MySQL
+
+    PostOwnerWS->>WSServer: subscription { createdComment { ... } }
+    WSServer->>WSServer: context({ req, connection: true })<br/>(no LoginApi over WS)
+    WSServer->>PS: withFilter(...) →<br/>asyncIterableIterator(CREATED_COMMENT)
+    Note over PostOwnerWS,PS: connection open, waiting
+
+    OtherWS->>WSServer: subscription { createdComment { ... } }
+    WSServer->>PS: asyncIterableIterator(CREATED_COMMENT)
+    Note over OtherWS,PS: also waiting, different loggedUserId
+
+    Note over KC,PS: At boot, startCommentConsumer() subscribed<br/>KC to KT and is running eachMessage(...)
+
+    Note over HTTP,DB: Meanwhile, over HTTP
+    HTTP->>HTTP: mutation createComment(postId, comment)
+    HTTP->>HTTP: checkIsLoggedIn(loggedUserId)
+    HTTP->>PostDB: getPost(postId)
+    PostDB->>DB: SELECT ...
+    PostDB-->>HTTP: { userId: postOwnerId }
+    HTTP->>CDB: create({ postId, comment, userId, postOwner: postOwnerId })
+    CDB->>DB: INSERT INTO comments (..., comment_hash)
+    Note right of DB: Unique index on (user_id, post_id,<br/>comment_hash) rejects a duplicate at<br/>insert time — no separate check query
+    CDB->>KP: publishCommentCreated(<br/>{ createdComment, postOwner: postOwnerId })
+
+    alt KAFKA_BROKERS set
+        KP->>KT: send({ createdComment, postOwner: postOwnerId })
+        KT->>KC: eachMessage(...)
+        alt message parses as JSON
+            KC->>PS: publish(CREATED_COMMENT,<br/>{ createdComment, postOwner: postOwnerId })
+        else malformed message
+            KC->>KP: publishToDeadLetterQueue(raw, reason)
+            KP->>KT: send to comment.created.dlq
+        end
+    else KAFKA_BROKERS unset (dev fallback)
+        KP->>PS: publish(CREATED_COMMENT,<br/>{ createdComment, postOwner: postOwnerId })
+    end
+
+    PS-->>WSServer: payload delivered to every open iterator
+    WSServer->>WSServer: filterFn(payload, ctx) per subscriber:<br/>payload.postOwner === ctx.loggedUserId ?
+
+    alt PostOwnerWS.loggedUserId === postOwnerId
+        WSServer-->>PostOwnerWS: createdComment (delivered)
+    end
+    Note over OtherWS: filterFn returns false — nothing delivered

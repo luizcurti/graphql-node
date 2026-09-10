@@ -1,0 +1,127 @@
+{
+  "name": "graphql-node-reference-architecture",
+  "version": "1.0.0",
+  "description": "GraphQL API with Apollo Server, Knex/MySQL, Redis-backed subscriptions and rate limiting, a Kafka event backbone, and JWT auth via httpOnly cookies.",
+  "main": "dist/index.js",
+  "scripts": {
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:integration": "NODE_ENV=development jest --config jest.integration.config.js --runInBand",
+    "test:e2e": "node -r dotenv/config -r sucrase/register e2e-test.ts",
+    "test:api": "npx --yes newman@6.2.2 run graphql-node.postman_collection.json --env-var baseUrl=${API_BASE_URL:-http://localhost:4003/graphql}",
+    "loadtest": "k6 run loadtest/graphql-load-test.js",
+    "stresstest": "k6 run loadtest/stress-test.js",
+    "test:ci": "npm run lint:check && npm run typecheck && npm run test && npm run build",
+    "typecheck": "tsc --noEmit",
+    "dev": "nodemon -e 'ts' -r dotenv/config -r sucrase/register -r ./src/observability/tracing src/index.ts",
+    "build": "rimraf ./dist && sucrase ./src -d ./dist --transforms imports,typescript --exclude-dirs __tests__",
+    "start": "node -r dotenv/config -r ./dist/observability/tracing.js dist/index.js",
+    "lint": "eslint src/",
+    "lint:fix": "eslint src/ --fix",
+    "lint:check": "eslint src/ --max-warnings=0",
+    "lint:ci": "eslint src/ --max-warnings=10",
+    "format": "prettier --write src/",
+    "format:check": "prettier --check src/",
+    "migrate": "node -r sucrase/register node_modules/.bin/knex --knexfile src/knex/knexfile.ts migrate:latest",
+    "migrate:rollback": "node -r sucrase/register node_modules/.bin/knex --knexfile src/knex/knexfile.ts migrate:rollback",
+    "seed": "node -r sucrase/register node_modules/.bin/knex --knexfile src/knex/knexfile.ts seed:run",
+    "db:setup": "npm run migrate && npm run seed",
+    "audit:high": "npm audit --audit-level=high",
+    "audit:ci": "npm audit --audit-level=high",
+    "security": "npm run audit:ci"
+  },
+  "keywords": [
+    "graphql",
+    "apollo-server",
+    "typescript",
+    "knex",
+    "mysql",
+    "redis",
+    "kafka",
+    "kubernetes",
+    "docker"
+  ],
+  "author": "Luiz Curti (https://github.com/luizcurti)",
+  "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/luizcurti/graphql-node-reference-architecture.git"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "overrides": {
+    "@types/graphql-depth-limit": {
+      "graphql": "$graphql"
+    }
+  },
+  "dependencies": {
+    "@apollo/server": "^5.5.1",
+    "@as-integrations/express5": "^1.1.2",
+    "@graphql-tools/schema": "^10.1.0",
+    "@opentelemetry/api": "^1.9.1",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.222.0",
+    "@opentelemetry/instrumentation-express": "^0.70.0",
+    "@opentelemetry/instrumentation-http": "^0.222.0",
+    "@opentelemetry/resources": "^2.11.0",
+    "@opentelemetry/sdk-node": "^0.222.0",
+    "@opentelemetry/semantic-conventions": "^1.43.0",
+    "@prometheus-io/client": "^0.16.1",
+    "bcrypt": "^6.0.0",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.6",
+    "dataloader": "^2.0.0",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.7.0",
+    "graphql": "^16.14.2",
+    "graphql-depth-limit": "^1.1.0",
+    "graphql-query-complexity": "^2.0.0",
+    "graphql-redis-subscriptions": "^2.7.0",
+    "graphql-subscriptions": "^3.0.0",
+    "graphql-tag": "^2.12.7",
+    "graphql-ws": "^6.2.1",
+    "helmet": "^8.3.0",
+    "ioredis": "^6.0.0",
+    "jsonwebtoken": "^9.0.3",
+    "kafkajs": "^2.2.4",
+    "knex": "^3.3.0",
+    "mysql2": "^3.23.4",
+    "pino": "^10.3.1",
+    "pino-pretty": "^13.1.3",
+    "rimraf": "^6.1.3",
+    "ws": "^8.21.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@sucrase/jest-plugin": "^3.0.0",
+    "@types/bcrypt": "^6.0.0",
+    "@types/cookie-parser": "^1.4.10",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/graphql-depth-limit": "^1.1.6",
+    "@types/jest": "^30.0.0",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "^26.2.0",
+    "@types/ws": "^8.18.1",
+    "eslint": "^10.1.8",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.6",
+    "globals": "^17.11.0",
+    "jest": "^30.4.2",
+    "nodemon": "^3.1.14",
+    "prettier": "^3.9.6",
+    "sucrase": "^3.35.1",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.67.0"
+  },
+  "jest": {
+    "transform": {
+      "^.+\\.[jt]sx?$": "@sucrase/jest-plugin"
+    },
+    "testPathIgnorePatterns": [
+      "/node_modules/",
+      "/__tests__/integration/"
+    ]
+  }
+}
